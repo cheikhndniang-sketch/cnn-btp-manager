@@ -1,0 +1,104 @@
+// CNN-BTPManager-Pro — Schéma Prisma Phase 1
+// CSE Immobilier — Reconstruction du Marché Sandaga
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  DIRECTEUR_PROJET
+  DIRECTEUR_TRAVAUX
+  CONDUCTEUR_TRAVAUX
+}
+
+enum SiteStatus {
+  ACTIVE
+  ARCHIVED
+  COMPLETED
+}
+
+model User {
+  id                 String    @id @default(uuid())
+  username           String    @unique
+  passwordHash       String
+  email              String?   @unique
+  name               String
+  role               Role      @default(CONDUCTEUR_TRAVAUX)
+  isActive           Boolean   @default(true)
+  mustChangePassword Boolean   @default(false)
+  lastLogin          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  siteMembers   SiteMember[]
+  auditLogs     AuditLog[]
+  refreshTokens RefreshToken[]
+
+  @@index([username])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+}
+
+model Site {
+  id             String     @id @default(uuid())
+  reference      String     @unique
+  name           String
+  location       String?
+  marcheHt       BigInt
+  tvaRate        Decimal    @default(0.18) @db.Decimal(5, 4)
+  startDate      DateTime   @db.Date
+  endDatePlanned DateTime?  @db.Date
+  status         SiteStatus @default(ACTIVE)
+  description    String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  members SiteMember[]
+
+  @@index([status])
+}
+
+model SiteMember {
+  id       String   @id @default(uuid())
+  siteId   String
+  userId   String
+  role     Role
+  joinedAt DateTime @default(now())
+
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([siteId, userId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  details   Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([entity, entityId])
+}

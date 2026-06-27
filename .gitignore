@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Claude Code — réglages locaux (permissions spécifiques à la machine)
+.claude/settings.local.json
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+backend/prisma/migrations/dev.db*
+frontend/.vite/

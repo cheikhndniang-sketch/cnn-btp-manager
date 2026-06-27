@@ -1,0 +1,45 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: cnn_btp_test
+          POSTGRES_USER: cnn
+          POSTGRES_PASSWORD: cnn_secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cnn -d cnn_btp_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://cnn:cnn_secret@localhost:5432/cnn_btp_test
+      JWT_SECRET: ci-secret-minimum-256-bits-for-testing-only
+      JWT_REFRESH_SECRET: ci-refresh-secret
+      JWT_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+      BCRYPT_ROUNDS: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Backend — install
+        run: cd backend && npm ci
+      - name: Backend — prisma generate
+        run: cd backend && npx prisma generate
+      - name: Backend — migrate
+        run: cd backend && npx prisma migrate deploy
+      - name: Backend — tests + coverage
+        run: cd backend && npm run test:cov
+      - name: Backend — build
+        run: cd backend && npm run build
+      - name: Frontend — install & build
+        run: cd frontend && npm ci && npm run build

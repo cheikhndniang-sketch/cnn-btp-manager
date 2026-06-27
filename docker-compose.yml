@@ -1,0 +1,22 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cnn_btp
+      POSTGRES_USER: cnn
+      POSTGRES_PASSWORD: cnn_secret
+    # Hôte 5544 → conteneur 5432 (les ports 5432/5433 sont occupés par des installations
+    # PostgreSQL natives sur cette machine).
+    ports:
+      - "5544:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cnn -d cnn_btp"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

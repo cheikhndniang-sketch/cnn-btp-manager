@@ -1,0 +1,15 @@
+# Normalise les fins de ligne en LF dans le dépôt (build Linux/Docker/Railway corrects).
+* text=auto eol=lf
+
+# Scripts shell et fichiers Docker : LF strict.
+*.sh text eol=lf
+Dockerfile text eol=lf
+
+# Binaires : pas de conversion.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
