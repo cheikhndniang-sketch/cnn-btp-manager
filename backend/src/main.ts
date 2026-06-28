@@ -19,6 +19,9 @@ async function bootstrap(): Promise<void> {
   app.use(helmet());
   app.use(cookieParser());
 
+  // Import de planning (jusqu'à ~200 tâches) : on relève la limite du body JSON.
+  app.useBodyParser('json', { limit: '10mb' });
+
   // Préfixe global /v1 (ex: POST /v1/auth/login)
   app.setGlobalPrefix('v1');
 

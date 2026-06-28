@@ -22,6 +22,7 @@ import { CreateLotDto } from './dto/create-lot.dto';
 import { UpdateLotDto } from './dto/update-lot.dto';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
+import { ImportPlanningDto } from './dto/import-planning.dto';
 import { PlanningService } from './planning.service';
 
 @Controller('sites/:siteId')
@@ -31,6 +32,18 @@ export class PlanningController {
 
   private actor(user: AuthenticatedUser) {
     return { userId: user.userId, role: user.role };
+  }
+
+  // ---- Import en masse (depuis .mpp / Excel) ----
+
+  @Post('planning/import')
+  @Roles(Role.DIRECTEUR_PROJET)
+  importPlanning(
+    @Param('siteId') siteId: string,
+    @Body() dto: ImportPlanningDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.planning.importPlanning(siteId, dto, this.actor(user));
   }
 
   // ---- Lots ----

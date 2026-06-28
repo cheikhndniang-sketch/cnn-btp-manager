@@ -10,6 +10,7 @@ import { CreateLotDto } from './dto/create-lot.dto';
 import { UpdateLotDto } from './dto/update-lot.dto';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
+import { ImportPlanningDto } from './dto/import-planning.dto';
 import { lotProgress } from './progress.util';
 
 interface Actor {
@@ -117,6 +118,62 @@ export class PlanningService {
     await this.sites.assertCanAccess(siteId, actor);
     await this.getLotOrThrow(siteId, lotId);
     await this.prisma.lot.delete({ where: { id: lotId } });
+  }
+
+  /**
+   * Import en masse d'un planning (lots + tâches), typiquement depuis un .mpp/Excel.
+   * `replace` remplace l'intégralité du planning existant du chantier.
+   */
+  async importPlanning(
+    siteId: string,
+    dto: ImportPlanningDto,
+    actor: Actor,
+  ): Promise<{ lots: number; tasks: number }> {
+    await this.sites.assertCanAccess(siteId, actor);
+    await this.ensureSiteExists(siteId);
+
+    const taskCount = dto.lots.reduce((acc, l) => acc + l.tasks.length, 0);
+
+    await this.prisma.$transaction(async (tx) => {
+      if (dto.replace) {
+        await tx.lot.deleteMany({ where: { siteId } });
+      }
+      for (let i = 0; i < dto.lots.length; i++) {
+        const lot = dto.lots[i];
+        await tx.lot.create({
+          data: {
+            siteId,
+            code: lot.code,
+            name: lot.name,
+            description: lot.description ?? null,
+            weight: lot.weight ?? 1,
+            position: i,
+            tasks: {
+              create: lot.tasks.map((t, j) => {
+                const { progressPct, status } = reconcile(
+                  t.progressPct ?? 0,
+                  t.status ?? TaskStatus.NOT_STARTED,
+                  t.progressPct !== undefined,
+                  t.status !== undefined,
+                );
+                return {
+                  name: t.name,
+                  description: t.description ?? null,
+                  progressPct,
+                  status,
+                  weight: t.weight ?? 1,
+                  position: j,
+                  startDate: t.startDate ? new Date(t.startDate) : null,
+                  endDate: t.endDate ? new Date(t.endDate) : null,
+                };
+              }),
+            },
+          },
+        });
+      }
+    });
+
+    return { lots: dto.lots.length, tasks: taskCount };
   }
 
   // ---- Tâches ----
