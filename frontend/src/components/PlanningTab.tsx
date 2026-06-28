@@ -35,7 +35,15 @@ function ProgressBar({ value }: { value: number }) {
   );
 }
 
-export function PlanningTab({ siteId }: { siteId: string }) {
+export function PlanningTab({
+  siteId,
+  siteName,
+  siteReference,
+}: {
+  siteId: string;
+  siteName: string;
+  siteReference: string;
+}) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const canManageLots = (user && ROLE_LEVEL[user.role] >= ROLE_LEVEL.DIRECTEUR_TRAVAUX) ?? false;
@@ -81,13 +89,39 @@ export function PlanningTab({ siteId }: { siteId: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <h2 className="font-semibold text-navy">Lots & tâches</h2>
-        {canManageLots && (
-          <button className="btn-secondary text-sm" onClick={() => setShowLotForm((v) => !v)}>
-            {showLotForm ? 'Annuler' : '+ Nouveau lot'}
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {(lots?.length ?? 0) > 0 && (
+            <>
+              <button
+                className="btn-secondary text-sm"
+                onClick={async () => {
+                  const m = await import('@/lib/exportPlanning');
+                  m.exportLotsToExcel({ name: siteName, reference: siteReference }, lots ?? []);
+                }}
+                title="Résumé d'avancement par lot (Excel)"
+              >
+                Excel
+              </button>
+              <button
+                className="btn-secondary text-sm"
+                onClick={async () => {
+                  const m = await import('@/lib/exportPlanning');
+                  m.exportLotsToPdf({ name: siteName, reference: siteReference }, lots ?? []);
+                }}
+                title="Résumé d'avancement par lot (PDF)"
+              >
+                PDF
+              </button>
+            </>
+          )}
+          {canManageLots && (
+            <button className="btn-secondary text-sm" onClick={() => setShowLotForm((v) => !v)}>
+              {showLotForm ? 'Annuler' : '+ Nouveau lot'}
+            </button>
+          )}
+        </div>
       </div>
 
       {summary && (

@@ -119,7 +119,11 @@ export function SiteDetailPage() {
               </div>
             </div>
           ) : tab === 'planning' ? (
-            <PlanningTab siteId={site.id} />
+            <PlanningTab
+              siteId={site.id}
+              siteName={site.name}
+              siteReference={site.reference}
+            />
           ) : (
             <div className="card text-center py-16">
               <p className="text-slate-500">
