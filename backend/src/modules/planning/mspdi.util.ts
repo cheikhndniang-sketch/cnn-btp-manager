@@ -7,11 +7,21 @@
  * Les tâches sont en planification manuelle pour préserver exactement les dates planifiées.
  */
 
+export type DependencyKind = 'FS' | 'SS' | 'FF' | 'SF';
+
+export interface MspdiDependencyInput {
+  predecessorId: string;
+  type: DependencyKind;
+  lagDays: number;
+}
+
 export interface MspdiTaskInput {
+  id: string;
   name: string;
   progressPct: number;
   startDate: Date | null;
   endDate: Date | null;
+  predecessors: MspdiDependencyInput[];
 }
 
 export interface MspdiLotInput {
@@ -20,6 +30,11 @@ export interface MspdiLotInput {
   progressPct: number;
   tasks: MspdiTaskInput[];
 }
+
+/** Type de lien MSPDI : 0=FF, 1=FS, 2=SF, 3=SS. */
+const LINK_TYPE: Record<DependencyKind, number> = { FF: 0, FS: 1, SF: 2, SS: 3 };
+
+const MINUTES_PER_DAY = 480; // calendrier d'export : 8 h/jour
 
 export interface MspdiProject {
   name: string;
@@ -86,6 +101,7 @@ const STANDARD_CALENDAR = `  <Calendars>
 interface BuiltTask {
   uid: number;
   id: number;
+  ourId: string;
   name: string;
   outline: number;
   summary: boolean;
@@ -94,6 +110,7 @@ interface BuiltTask {
   durationHours: number;
   percent: number;
   outlineNumber: string;
+  predecessors: MspdiDependencyInput[];
 }
 
 export function buildMspdi(project: MspdiProject, lots: MspdiLotInput[]): string {
@@ -115,6 +132,7 @@ export function buildMspdi(project: MspdiProject, lots: MspdiLotInput[]): string
     tasks.push({
       uid: lotUid,
       id: lotUid,
+      ourId: '',
       name: `${lot.code} · ${lot.name}`,
       outline: 1,
       summary: true,
@@ -123,6 +141,7 @@ export function buildMspdi(project: MspdiProject, lots: MspdiLotInput[]): string
       durationHours: workingDays(lotStart, lotFinish) * 8,
       percent: lot.progressPct,
       outlineNumber: String(li + 1),
+      predecessors: [],
     });
 
     lot.tasks.forEach((t, ti) => {
@@ -132,6 +151,7 @@ export function buildMspdi(project: MspdiProject, lots: MspdiLotInput[]): string
       tasks.push({
         uid: tUid,
         id: tUid,
+        ourId: t.id,
         name: t.name,
         outline: 2,
         summary: false,
@@ -140,9 +160,16 @@ export function buildMspdi(project: MspdiProject, lots: MspdiLotInput[]): string
         durationHours: workingDays(start, finish) * 8,
         percent: t.progressPct,
         outlineNumber: `${li + 1}.${ti + 1}`,
+        predecessors: t.predecessors,
       });
     });
   });
+
+  // Map identifiant interne → UID MSPDI, pour résoudre les liens de dépendance.
+  const uidByOurId = new Map<string, number>();
+  for (const t of tasks) {
+    if (t.ourId) uidByOurId.set(t.ourId, t.uid);
+  }
 
   const projStart = tasks.length
     ? new Date(Math.min(...tasks.map((t) => t.start.getTime())))
@@ -174,11 +201,35 @@ export function buildMspdi(project: MspdiProject, lots: MspdiLotInput[]): string
         `      <Milestone>0</Milestone>`,
       ];
       if (!t.summary) {
-        lines.push(
-          `      <ConstraintType>4</ConstraintType>`,
-          `      <ConstraintDate>${dt(t.start, '08:00:00')}</ConstraintDate>`,
-          `      <PercentComplete>${t.percent}</PercentComplete>`,
-        );
+        const links = t.predecessors
+          .map((p) => ({ uid: uidByOurId.get(p.predecessorId), p }))
+          .filter((x): x is { uid: number; p: MspdiDependencyInput } => x.uid !== undefined);
+
+        if (links.length > 0) {
+          // Tâche pilotée par ses prédécesseurs : « Dès que possible » → MS Project
+          // recalcule la date et le chemin critique à partir du réseau de liens.
+          lines.push(`      <ConstraintType>0</ConstraintType>`);
+        } else {
+          // Tâche d'ancrage (sans prédécesseur) : « Début au plus tôt » pour fixer la date.
+          lines.push(
+            `      <ConstraintType>4</ConstraintType>`,
+            `      <ConstraintDate>${dt(t.start, '08:00:00')}</ConstraintDate>`,
+          );
+        }
+        lines.push(`      <PercentComplete>${t.percent}</PercentComplete>`);
+
+        for (const { uid: predUid, p } of links) {
+          const lagTenthsMin = p.lagDays * MINUTES_PER_DAY * 10;
+          lines.push(
+            `      <PredecessorLink>`,
+            `        <PredecessorUID>${predUid}</PredecessorUID>`,
+            `        <Type>${LINK_TYPE[p.type]}</Type>`,
+            `        <CrossProject>0</CrossProject>`,
+            `        <LinkLag>${lagTenthsMin}</LinkLag>`,
+            `        <LagFormat>7</LagFormat>`,
+            `      </PredecessorLink>`,
+          );
+        }
       }
       lines.push('    </Task>');
       return lines.join('\n');

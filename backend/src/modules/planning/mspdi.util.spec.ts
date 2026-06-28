@@ -10,16 +10,20 @@ describe('buildMspdi', () => {
         progressPct: 50,
         tasks: [
           {
+            id: 'task-a',
             name: 'Fondations',
             progressPct: 100,
             startDate: new Date('2026-02-16'),
             endDate: new Date('2026-02-20'),
+            predecessors: [],
           },
           {
+            id: 'task-b',
             name: 'Élévation & dépendances <test>',
             progressPct: 0,
             startDate: new Date('2026-02-23'),
             endDate: new Date('2026-03-06'),
+            predecessors: [{ predecessorId: 'task-a', type: 'FS', lagDays: 2 }],
           },
         ],
       },
@@ -41,9 +45,18 @@ describe('buildMspdi', () => {
     expect(xml).toContain('<Summary>1</Summary>');
   });
 
-  it('les tâches feuilles portent contrainte SNET + PercentComplete', () => {
+  it('une tâche sans prédécesseur est ancrée (SNET) avec PercentComplete', () => {
     expect(xml).toContain('<ConstraintType>4</ConstraintType>');
     expect(xml).toContain('<PercentComplete>100</PercentComplete>');
+  });
+
+  it('une tâche avec prédécesseur passe en ASAP et émet un PredecessorLink', () => {
+    expect(xml).toContain('<ConstraintType>0</ConstraintType>');
+    expect(xml).toContain('<PredecessorLink>');
+    expect(xml).toContain('<Type>1</Type>'); // FS
+    // lag 2 jours -> 2 * 480 * 10 = 9600 dixièmes de minute
+    expect(xml).toContain('<LinkLag>9600</LinkLag>');
+    expect(xml).toContain('<LagFormat>7</LagFormat>');
   });
 
   it('échappe les caractères XML', () => {

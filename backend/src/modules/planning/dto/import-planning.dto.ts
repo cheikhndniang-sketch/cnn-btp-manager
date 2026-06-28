@@ -12,7 +12,21 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
-import { TaskStatus } from '@prisma/client';
+import { DependencyType, TaskStatus } from '@prisma/client';
+
+export class ImportDependencyDto {
+  /** UID MS Project de la tâche prédécesseur (résolu via mppUid à l'import). */
+  @Type(() => Number)
+  @IsInt()
+  fromUid!: number;
+
+  @IsEnum(DependencyType)
+  type!: DependencyType;
+
+  @Type(() => Number)
+  @IsInt()
+  lagDays!: number;
+}
 
 export class ImportTaskDto {
   @IsString()
@@ -47,6 +61,18 @@ export class ImportTaskDto {
   @IsOptional()
   @IsDateString()
   endDate?: string;
+
+  /** UID MS Project d'origine (clé pour relier les dépendances). */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  mppUid?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ImportDependencyDto)
+  predecessors?: ImportDependencyDto[];
 }
 
 export class ImportLotDto {

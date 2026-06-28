@@ -141,11 +141,12 @@ export class PlanningService {
     siteId: string,
     dto: ImportPlanningDto,
     actor: Actor,
-  ): Promise<{ lots: number; tasks: number }> {
+  ): Promise<{ lots: number; tasks: number; dependencies: number }> {
     await this.sites.assertCanAccess(siteId, actor);
     await this.ensureSiteExists(siteId);
 
     const taskCount = dto.lots.reduce((acc, l) => acc + l.tasks.length, 0);
+    let depCount = 0;
 
     await this.prisma.$transaction(async (tx) => {
       if (dto.replace) {
@@ -178,15 +179,52 @@ export class PlanningService {
                   position: j,
                   startDate: t.startDate ? new Date(t.startDate) : null,
                   endDate: t.endDate ? new Date(t.endDate) : null,
+                  mppUid: t.mppUid ?? null,
                 };
               }),
             },
           },
         });
       }
+
+      // 2ᵉ passe : relier les dépendances via les UID MS Project (mppUid).
+      const rows = await tx.task.findMany({
+        where: { lot: { siteId }, mppUid: { not: null } },
+        select: { id: true, mppUid: true },
+      });
+      const byUid = new Map<number, string>();
+      for (const r of rows) {
+        if (r.mppUid !== null) byUid.set(r.mppUid, r.id);
+      }
+
+      const deps: Prisma.TaskDependencyCreateManyInput[] = [];
+      for (const lot of dto.lots) {
+        for (const t of lot.tasks) {
+          if (t.mppUid === undefined || !t.predecessors?.length) continue;
+          const successorId = byUid.get(t.mppUid);
+          if (!successorId) continue;
+          for (const p of t.predecessors) {
+            const predecessorId = byUid.get(p.fromUid);
+            if (!predecessorId || predecessorId === successorId) continue;
+            deps.push({
+              successorId,
+              predecessorId,
+              type: p.type,
+              lagDays: p.lagDays,
+            });
+          }
+        }
+      }
+      if (deps.length > 0) {
+        const created = await tx.taskDependency.createMany({
+          data: deps,
+          skipDuplicates: true,
+        });
+        depCount = created.count;
+      }
     });
 
-    return { lots: dto.lots.length, tasks: taskCount };
+    return { lots: dto.lots.length, tasks: taskCount, dependencies: depCount };
   }
 
   /** Génère le planning au format XML MS Project (MSPDI). */
@@ -202,7 +240,12 @@ export class PlanningService {
     const lots = await this.prisma.lot.findMany({
       where: { siteId },
       orderBy: [{ position: 'asc' }, { code: 'asc' }],
-      include: { tasks: { orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] } },
+      include: {
+        tasks: {
+          orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
+          include: { predecessors: true },
+        },
+      },
     });
 
     const xml = buildMspdi(
@@ -212,10 +255,16 @@ export class PlanningService {
         name: l.name,
         progressPct: lotProgress(l.tasks),
         tasks: l.tasks.map((t) => ({
+          id: t.id,
           name: t.name,
           progressPct: t.progressPct,
           startDate: t.startDate,
           endDate: t.endDate,
+          predecessors: t.predecessors.map((d) => ({
+            predecessorId: d.predecessorId,
+            type: d.type,
+            lagDays: d.lagDays,
+          })),
         })),
       })),
     );

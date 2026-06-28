@@ -111,12 +111,37 @@ model Task {
   position    Int        @default(0)
   startDate   DateTime?  @db.Date
   endDate     DateTime?  @db.Date
+  mppUid      Int? // UID d'origine MS Project (pour résoudre les dépendances à l'import)
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
-  lot Lot @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  lot          Lot              @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  predecessors TaskDependency[] @relation("DepSuccessor")
+  dependents   TaskDependency[] @relation("DepPredecessor")
 
   @@index([lotId])
+}
+
+enum DependencyType {
+  FS // Fin → Début (Finish-to-Start)
+  SS // Début → Début (Start-to-Start)
+  FF // Fin → Fin (Finish-to-Finish)
+  SF // Début → Fin (Start-to-Finish)
+}
+
+model TaskDependency {
+  id            String         @id @default(uuid())
+  successorId   String
+  predecessorId String
+  type          DependencyType @default(FS)
+  lagDays       Int            @default(0)
+
+  successor   Task @relation("DepSuccessor", fields: [successorId], references: [id], onDelete: Cascade)
+  predecessor Task @relation("DepPredecessor", fields: [predecessorId], references: [id], onDelete: Cascade)
+
+  @@unique([successorId, predecessorId])
+  @@index([successorId])
+  @@index([predecessorId])
 }
 
 model SiteMember {
