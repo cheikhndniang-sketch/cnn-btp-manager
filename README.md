@@ -101,6 +101,27 @@ Specs : `auth.service.spec.ts`, `users.service.spec.ts`, `sites.service.spec.ts`
 
 ---
 
+## Planning & interopérabilité MS Project
+
+L'onglet **Planning** d'un chantier gère les lots (corps de métier) et leurs tâches, avec
+avancement réel, **avancement planifié à date** et **détection automatique des retards**.
+
+Exports disponibles (boutons de l'onglet Planning) :
+- **Excel** / **PDF** : résumé d'avancement par lot.
+- **MS Project** : planning complet au format **XML MS Project (MSPDI)**, ouvrable directement
+  dans MS Project.
+
+Pour obtenir un **`.mpp` natif** depuis le XML exporté (nécessite MS Project installé) :
+
+```powershell
+scripts\xml-to-mpp.ps1 -Xml "chemin\vers\Planning-SAN-2024-001-AAAA-MM-JJ.xml"
+```
+
+> Le format binaire `.mpp` n'étant pas inscriptible côté serveur, l'app exporte en XML MS Project ;
+> la conversion en `.mpp` natif se fait localement via ce script (automatisation MS Project).
+
+---
+
 ## Déploiement en production
 
 Voir **[DEPLOY.md](DEPLOY.md)** — déploiement Railway en 3 services (Postgres + backend + frontend),
