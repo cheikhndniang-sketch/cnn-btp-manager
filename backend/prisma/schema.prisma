@@ -23,6 +23,13 @@ enum SiteStatus {
   COMPLETED
 }
 
+enum TaskStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  DONE
+  BLOCKED
+}
+
 model User {
   id                 String    @id @default(uuid())
   username           String    @unique
@@ -70,8 +77,46 @@ model Site {
   updatedAt      DateTime   @updatedAt
 
   members SiteMember[]
+  lots    Lot[]
 
   @@index([status])
+}
+
+model Lot {
+  id          String   @id @default(uuid())
+  siteId      String
+  code        String
+  name        String
+  description String?
+  weight      Int      @default(1)
+  position    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  site  Site   @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  tasks Task[]
+
+  @@unique([siteId, code])
+  @@index([siteId])
+}
+
+model Task {
+  id          String     @id @default(uuid())
+  lotId       String
+  name        String
+  description String?
+  progressPct Int        @default(0)
+  status      TaskStatus @default(NOT_STARTED)
+  weight      Int        @default(1)
+  position    Int        @default(0)
+  startDate   DateTime?  @db.Date
+  endDate     DateTime?  @db.Date
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  lot Lot @relation(fields: [lotId], references: [id], onDelete: Cascade)
+
+  @@index([lotId])
 }
 
 model SiteMember {

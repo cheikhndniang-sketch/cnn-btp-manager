@@ -29,9 +29,44 @@ export interface Site {
   endDatePlanned: string | null;
   status: SiteStatus;
   description: string | null;
+  avancementPct: number;
   createdAt: string;
   updatedAt: string;
 }
+
+export type TaskStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'DONE' | 'BLOCKED';
+
+export interface Task {
+  id: string;
+  lotId: string;
+  name: string;
+  description: string | null;
+  progressPct: number;
+  status: TaskStatus;
+  weight: number;
+  position: number;
+  startDate: string | null;
+  endDate: string | null;
+}
+
+export interface Lot {
+  id: string;
+  siteId: string;
+  code: string;
+  name: string;
+  description: string | null;
+  weight: number;
+  position: number;
+  progressPct: number;
+  tasks: Task[];
+}
+
+export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
+  NOT_STARTED: 'À faire',
+  IN_PROGRESS: 'En cours',
+  DONE: 'Terminé',
+  BLOCKED: 'Bloqué',
+};
 
 export interface SiteMember {
   userId: string;

@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, Role, Site, SiteMember, SiteStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { siteProgress, LotLike } from '../planning/progress.util';
 import { AddMemberDto } from './dto/add-member.dto';
 import { CreateSiteDto } from './dto/create-site.dto';
 import { UpdateSiteDto } from './dto/update-site.dto';
@@ -21,9 +22,15 @@ export interface SiteDto {
   endDatePlanned: Date | null;
   status: SiteStatus;
   description: string | null;
+  avancementPct: number;
   createdAt: Date;
   updatedAt: Date;
 }
+
+/** Un chantier avec ses lots et tâches inclus (pour le calcul d'avancement). */
+type SiteWithLots = Site & {
+  lots?: Array<{ weight: number; tasks: Array<{ progressPct: number; weight: number }> }>;
+};
 
 export interface SiteKpi {
   avancementPct: number;
@@ -42,7 +49,11 @@ interface Actor {
 export class SitesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  static serialize(site: Site): SiteDto {
+  static serialize(site: SiteWithLots): SiteDto {
+    const lots: LotLike[] = (site.lots ?? []).map((l) => ({
+      weight: l.weight,
+      tasks: l.tasks,
+    }));
     return {
       id: site.id,
       reference: site.reference,
@@ -54,17 +65,24 @@ export class SitesService {
       endDatePlanned: site.endDatePlanned,
       status: site.status,
       description: site.description,
+      avancementPct: siteProgress(lots),
       createdAt: site.createdAt,
       updatedAt: site.updatedAt,
     };
   }
+
+  /** Inclusion Prisma standard pour calculer l'avancement d'un chantier. */
+  private static readonly PROGRESS_INCLUDE = {
+    lots: { include: { tasks: { select: { progressPct: true, weight: true } } } },
+  } satisfies Prisma.SiteInclude;
 
   /** ADMIN/DP voient tout ; DT/CT uniquement leurs chantiers assignés. */
   private hasGlobalScope(role: Role): boolean {
     return role === Role.ADMIN || role === Role.DIRECTEUR_PROJET;
   }
 
-  private async assertCanAccess(siteId: string, actor: Actor): Promise<void> {
+  /** Vérifie l'accès d'un acteur à un chantier (réutilisé par le module Planning). */
+  async assertCanAccess(siteId: string, actor: Actor): Promise<void> {
     if (this.hasGlobalScope(actor.role)) return;
 
     const membership = await this.prisma.siteMember.findUnique({
@@ -85,6 +103,7 @@ export class SitesService {
     const sites = await this.prisma.site.findMany({
       where,
       orderBy: { createdAt: 'desc' },
+      include: SitesService.PROGRESS_INCLUDE,
     });
     return sites.map(SitesService.serialize);
   }
@@ -97,7 +116,10 @@ export class SitesService {
 
     const site = await this.prisma.site.findUnique({
       where: { id },
-      include: { members: { include: { user: true } } },
+      include: {
+        members: { include: { user: true } },
+        ...SitesService.PROGRESS_INCLUDE,
+      },
     });
     if (!site) {
       throw new NotFoundException('Chantier introuvable');
@@ -223,13 +245,16 @@ export class SitesService {
     });
   }
 
-  /** KPI Phase 1 : valeurs partiellement statiques en attendant la Phase 2. */
+  /** KPI synthétiques. avancementPct est calculé depuis les lots/tâches (Phase 2). */
   async getKpi(id: string, actor: Actor): Promise<SiteKpi> {
     await this.assertCanAccess(id, actor);
 
     const site = await this.prisma.site.findUnique({
       where: { id },
-      include: { _count: { select: { members: true } } },
+      include: {
+        _count: { select: { members: true } },
+        ...SitesService.PROGRESS_INCLUDE,
+      },
     });
     if (!site) {
       throw new NotFoundException('Chantier introuvable');
@@ -246,7 +271,9 @@ export class SitesService {
       : 180;
 
     return {
-      avancementPct: 0,
+      avancementPct: siteProgress(
+        (site.lots ?? []).map((l) => ({ weight: l.weight, tasks: l.tasks })),
+      ),
       budgetTotal: Number(site.marcheHt),
       joursRestants,
       membresCount: site._count.members,

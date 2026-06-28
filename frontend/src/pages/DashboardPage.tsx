@@ -20,6 +20,12 @@ export function DashboardPage() {
 
   const activeSites = sites?.filter((s) => s.status === 'ACTIVE') ?? [];
   const totalBudget = activeSites.reduce((acc, s) => acc + s.marcheHt, 0);
+  const avgProgress =
+    activeSites.length > 0
+      ? Math.round(
+          activeSites.reduce((acc, s) => acc + s.avancementPct, 0) / activeSites.length,
+        )
+      : 0;
 
   return (
     <DashboardLayout>
@@ -37,7 +43,7 @@ export function DashboardPage() {
           accent="cyan"
           hint="Disponible en Phase 2"
         />
-        <KpiCard label="Avancement moyen" value="0 %" accent="green" />
+        <KpiCard label="Avancement moyen" value={`${avgProgress} %`} accent="green" />
       </div>
 
       <div className="card">
@@ -78,12 +84,12 @@ export function DashboardPage() {
                   <div>
                     <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
                       <span>Avancement</span>
-                      <span>0 %</span>
+                      <span>{site.avancementPct} %</span>
                     </div>
                     <div className="h-2 w-full rounded-full bg-slate-100">
                       <div
                         className="h-2 rounded-full bg-cyan"
-                        style={{ width: '0%' }}
+                        style={{ width: `${site.avancementPct}%` }}
                       />
                     </div>
                   </div>

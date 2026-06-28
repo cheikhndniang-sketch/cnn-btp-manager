@@ -4,12 +4,13 @@ import { useQuery } from '@tanstack/react-query';
 import { sitesApi } from '@/api/endpoints';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { KpiCard } from '@/components/KpiCard';
+import { PlanningTab } from '@/components/PlanningTab';
 import { formatDate, formatFCFA } from '@/lib/format';
 import { ROLE_LABELS } from '@/api/types';
 
 const TABS = [
   { key: 'general', label: 'Vue générale', enabled: true },
-  { key: 'planning', label: 'Planning', enabled: false },
+  { key: 'planning', label: 'Planning', enabled: true },
   { key: 'rapports', label: 'Rapports', enabled: false },
   { key: 'finance', label: 'Finance', enabled: false },
   { key: 'st', label: 'Sous-traitance', enabled: false },
@@ -117,6 +118,8 @@ export function SiteDetailPage() {
                 </ul>
               </div>
             </div>
+          ) : tab === 'planning' ? (
+            <PlanningTab siteId={site.id} />
           ) : (
             <div className="card text-center py-16">
               <p className="text-slate-500">

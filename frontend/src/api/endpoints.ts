@@ -1,11 +1,32 @@
 import { api } from './client';
 import type {
+  Lot,
   LoginResponse,
   Site,
   SiteKpi,
   SiteMember,
+  Task,
+  TaskStatus,
   User,
 } from './types';
+
+export interface LotPayload {
+  code?: string;
+  name?: string;
+  description?: string;
+  weight?: number;
+  position?: number;
+}
+
+export interface TaskPayload {
+  name?: string;
+  description?: string;
+  progressPct?: number;
+  status?: TaskStatus;
+  weight?: number;
+  startDate?: string | null;
+  endDate?: string | null;
+}
 
 export const authApi = {
   login: (username: string, password: string) =>
@@ -37,4 +58,25 @@ export const sitesApi = {
   kpi: (id: string) => api.get<SiteKpi>(`/sites/${id}/kpi`).then((r) => r.data),
   members: (id: string) =>
     api.get<SiteMember[]>(`/sites/${id}/members`).then((r) => r.data),
+};
+
+export const planningApi = {
+  listLots: (siteId: string) =>
+    api.get<Lot[]>(`/sites/${siteId}/lots`).then((r) => r.data),
+  createLot: (siteId: string, payload: LotPayload) =>
+    api.post<Lot>(`/sites/${siteId}/lots`, payload).then((r) => r.data),
+  updateLot: (siteId: string, lotId: string, payload: LotPayload) =>
+    api.patch<Lot>(`/sites/${siteId}/lots/${lotId}`, payload).then((r) => r.data),
+  deleteLot: (siteId: string, lotId: string) =>
+    api.delete(`/sites/${siteId}/lots/${lotId}`).then((r) => r.data),
+  createTask: (siteId: string, lotId: string, payload: TaskPayload) =>
+    api
+      .post<Task>(`/sites/${siteId}/lots/${lotId}/tasks`, payload)
+      .then((r) => r.data),
+  updateTask: (siteId: string, lotId: string, taskId: string, payload: TaskPayload) =>
+    api
+      .patch<Task>(`/sites/${siteId}/lots/${lotId}/tasks/${taskId}`, payload)
+      .then((r) => r.data),
+  deleteTask: (siteId: string, lotId: string, taskId: string) =>
+    api.delete(`/sites/${siteId}/lots/${lotId}/tasks/${taskId}`).then((r) => r.data),
 };

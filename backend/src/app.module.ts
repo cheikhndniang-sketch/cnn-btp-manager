@@ -6,6 +6,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { SitesModule } from './modules/sites/sites.module';
+import { PlanningModule } from './modules/planning/planning.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -24,6 +25,7 @@ import { HealthController } from './health.controller';
     AuthModule,
     UsersModule,
     SitesModule,
+    PlanningModule,
   ],
   controllers: [HealthController],
   providers: [
