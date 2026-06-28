@@ -1,8 +1,11 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { sitesApi } from '@/api/endpoints';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { KpiCard } from '@/components/KpiCard';
+import { CreateSiteModal } from '@/components/CreateSiteModal';
+import { useAuth } from '@/hooks/useAuth';
 import { formatFCFA } from '@/lib/format';
 import type { Site } from '@/api/types';
 
@@ -13,6 +16,10 @@ const STATUS_BADGE: Record<Site['status'], string> = {
 };
 
 export function DashboardPage() {
+  const { user } = useAuth();
+  const [showCreate, setShowCreate] = useState(false);
+  const canCreate = user?.role === 'ADMIN' || user?.role === 'DIRECTEUR_PROJET';
+
   const { data: sites, isLoading } = useQuery({
     queryKey: ['sites'],
     queryFn: sitesApi.list,
@@ -30,10 +37,19 @@ export function DashboardPage() {
 
   return (
     <DashboardLayout>
-      <h1 className="text-2xl font-bold text-navy mb-1">Tableau de bord</h1>
-      <p className="text-sm text-slate-500 mb-6">
-        Vue d'ensemble des chantiers CSE Immobilier
-      </p>
+      <div className="flex items-start justify-between mb-6 gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-navy mb-1">Tableau de bord</h1>
+          <p className="text-sm text-slate-500">Vue d'ensemble des chantiers CSE Immobilier</p>
+        </div>
+        {canCreate && (
+          <button className="btn-primary" onClick={() => setShowCreate(true)}>
+            + Nouveau chantier
+          </button>
+        )}
+      </div>
+
+      {showCreate && <CreateSiteModal onClose={() => setShowCreate(false)} />}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <KpiCard label="Total chantiers" value={sites?.length ?? 0} accent="navy" />

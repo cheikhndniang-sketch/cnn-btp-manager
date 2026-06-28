@@ -16,6 +16,8 @@ export interface LotPayload {
   description?: string;
   weight?: number;
   position?: number;
+  startDate?: string | null;
+  endDate?: string | null;
 }
 
 export interface TaskPayload {
@@ -51,8 +53,21 @@ export const usersApi = {
   deactivate: (id: string) => api.delete<User>(`/users/${id}`).then((r) => r.data),
 };
 
+export interface CreateSitePayload {
+  reference: string;
+  name: string;
+  location?: string;
+  marcheHt: number;
+  tvaRate?: number;
+  startDate: string;
+  endDatePlanned?: string;
+  description?: string;
+}
+
 export const sitesApi = {
   list: () => api.get<Site[]>('/sites').then((r) => r.data),
+  create: (payload: CreateSitePayload) =>
+    api.post<Site>('/sites', payload).then((r) => r.data),
   get: (id: string) =>
     api.get<Site & { members: SiteMember[] }>(`/sites/${id}`).then((r) => r.data),
   kpi: (id: string) => api.get<SiteKpi>(`/sites/${id}/kpi`).then((r) => r.data),

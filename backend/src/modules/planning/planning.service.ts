@@ -52,6 +52,8 @@ export interface LotView {
   plannedPct: number;
   tasksLate: number;
   retardJoursMax: number;
+  startDate: Date | null;
+  endDate: Date | null;
   tasks: TaskView[];
 }
 
@@ -98,6 +100,8 @@ export class PlanningService {
         description: dto.description ?? null,
         weight: dto.weight ?? 1,
         position: dto.position ?? 0,
+        startDate: dto.startDate ? new Date(dto.startDate) : null,
+        endDate: dto.endDate ? new Date(dto.endDate) : null,
       },
       include: { tasks: true },
     });
@@ -118,6 +122,10 @@ export class PlanningService {
     if (dto.description !== undefined) data.description = dto.description;
     if (dto.weight !== undefined) data.weight = dto.weight;
     if (dto.position !== undefined) data.position = dto.position;
+    if (dto.startDate !== undefined)
+      data.startDate = dto.startDate ? new Date(dto.startDate) : null;
+    if (dto.endDate !== undefined)
+      data.endDate = dto.endDate ? new Date(dto.endDate) : null;
 
     const lot = await this.prisma.lot.update({
       where: { id: lotId },
@@ -450,6 +458,14 @@ function mapTask(task: Task, asOf: Date = new Date()): TaskView {
 
 function mapLot(lot: Lot & { tasks: Task[] }, asOf: Date = new Date()): LotView {
   const tasks = lot.tasks.map((t) => mapTask(t, asOf));
+  const starts = lot.tasks.map((t) => t.startDate).filter((d): d is Date => !!d);
+  const finishes = lot.tasks.map((t) => t.endDate).filter((d): d is Date => !!d);
+  const startDate =
+    lot.startDate ??
+    (starts.length ? new Date(Math.min(...starts.map((d) => d.getTime()))) : null);
+  const endDate =
+    lot.endDate ??
+    (finishes.length ? new Date(Math.max(...finishes.map((d) => d.getTime()))) : null);
   return {
     id: lot.id,
     siteId: lot.siteId,
@@ -458,6 +474,8 @@ function mapLot(lot: Lot & { tasks: Task[] }, asOf: Date = new Date()): LotView 
     description: lot.description,
     weight: lot.weight,
     position: lot.position,
+    startDate,
+    endDate,
     progressPct: lotProgress(tasks),
     plannedPct: lotPlannedProgress(
       lot.tasks.map((t) => ({

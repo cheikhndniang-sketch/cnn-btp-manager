@@ -67,6 +67,8 @@ export interface Lot {
   plannedPct: number;
   tasksLate: number;
   retardJoursMax: number;
+  startDate: string | null;
+  endDate: string | null;
   tasks: Task[];
 }
 
