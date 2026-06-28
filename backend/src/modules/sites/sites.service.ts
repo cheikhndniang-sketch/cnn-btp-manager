@@ -7,6 +7,11 @@ import {
 import { Prisma, Role, Site, SiteMember, SiteStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { siteProgress, LotLike } from '../planning/progress.util';
+import {
+  countLate,
+  ScheduledLot,
+  sitePlannedProgress,
+} from '../planning/schedule.util';
 import { AddMemberDto } from './dto/add-member.dto';
 import { CreateSiteDto } from './dto/create-site.dto';
 import { UpdateSiteDto } from './dto/update-site.dto';
@@ -23,17 +28,32 @@ export interface SiteDto {
   status: SiteStatus;
   description: string | null;
   avancementPct: number;
+  avancementPlanifie: number;
+  tasksLate: number;
+  tasksTotal: number;
   createdAt: Date;
   updatedAt: Date;
 }
 
-/** Un chantier avec ses lots et tâches inclus (pour le calcul d'avancement). */
+type ScheduledTaskRow = {
+  progressPct: number;
+  weight: number;
+  startDate: Date | null;
+  endDate: Date | null;
+};
+
+/** Un chantier avec ses lots et tâches inclus (pour les calculs de planning). */
 type SiteWithLots = Site & {
-  lots?: Array<{ weight: number; tasks: Array<{ progressPct: number; weight: number }> }>;
+  lots?: Array<{ weight: number; tasks: ScheduledTaskRow[] }>;
 };
 
 export interface SiteKpi {
   avancementPct: number;
+  avancementPlanifie: number;
+  ecartPct: number;
+  tasksLate: number;
+  tasksTotal: number;
+  retardMaxJours: number;
   budgetTotal: number;
   joursRestants: number;
   membresCount: number;
@@ -50,10 +70,14 @@ export class SitesService {
   constructor(private readonly prisma: PrismaService) {}
 
   static serialize(site: SiteWithLots): SiteDto {
-    const lots: LotLike[] = (site.lots ?? []).map((l) => ({
+    const rows = site.lots ?? [];
+    const lots: LotLike[] = rows.map((l) => ({ weight: l.weight, tasks: l.tasks }));
+    const scheduledLots: ScheduledLot[] = rows.map((l) => ({
       weight: l.weight,
       tasks: l.tasks,
     }));
+    const asOf = new Date();
+    const late = countLate(scheduledLots, asOf);
     return {
       id: site.id,
       reference: site.reference,
@@ -66,14 +90,28 @@ export class SitesService {
       status: site.status,
       description: site.description,
       avancementPct: siteProgress(lots),
+      avancementPlanifie: sitePlannedProgress(scheduledLots, asOf),
+      tasksLate: late.tasksLate,
+      tasksTotal: late.tasksTotal,
       createdAt: site.createdAt,
       updatedAt: site.updatedAt,
     };
   }
 
-  /** Inclusion Prisma standard pour calculer l'avancement d'un chantier. */
+  /** Inclusion Prisma standard pour les calculs de planning (avancement + retards). */
   private static readonly PROGRESS_INCLUDE = {
-    lots: { include: { tasks: { select: { progressPct: true, weight: true } } } },
+    lots: {
+      include: {
+        tasks: {
+          select: {
+            progressPct: true,
+            weight: true,
+            startDate: true,
+            endDate: true,
+          },
+        },
+      },
+    },
   } satisfies Prisma.SiteInclude;
 
   /** ADMIN/DP voient tout ; DT/CT uniquement leurs chantiers assignés. */
@@ -270,14 +308,28 @@ export class SitesService {
         )
       : 180;
 
+    const scheduledLots: ScheduledLot[] = (site.lots ?? []).map((l) => ({
+      weight: l.weight,
+      tasks: l.tasks,
+    }));
+    const asOf = new Date();
+    const avancementPct = siteProgress(
+      scheduledLots.map((l) => ({ weight: l.weight, tasks: l.tasks })),
+    );
+    const avancementPlanifie = sitePlannedProgress(scheduledLots, asOf);
+    const late = countLate(scheduledLots, asOf);
+
     return {
-      avancementPct: siteProgress(
-        (site.lots ?? []).map((l) => ({ weight: l.weight, tasks: l.tasks })),
-      ),
+      avancementPct,
+      avancementPlanifie,
+      ecartPct: avancementPct - avancementPlanifie,
+      tasksLate: late.tasksLate,
+      tasksTotal: late.tasksTotal,
+      retardMaxJours: late.retardMaxJours,
       budgetTotal: Number(site.marcheHt),
       joursRestants,
       membresCount: site._count.members,
-      alertesCount: 0,
+      alertesCount: late.tasksLate,
     };
   }
 }

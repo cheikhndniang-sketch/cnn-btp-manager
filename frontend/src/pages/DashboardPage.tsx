@@ -26,6 +26,7 @@ export function DashboardPage() {
           activeSites.reduce((acc, s) => acc + s.avancementPct, 0) / activeSites.length,
         )
       : 0;
+  const totalLate = (sites ?? []).reduce((acc, s) => acc + s.tasksLate, 0);
 
   return (
     <DashboardLayout>
@@ -36,7 +37,12 @@ export function DashboardPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <KpiCard label="Total chantiers" value={sites?.length ?? 0} accent="navy" />
-        <KpiCard label="Alertes" value={0} accent="red" hint="Aucune alerte active" />
+        <KpiCard
+          label="Tâches en retard"
+          value={totalLate}
+          accent="red"
+          hint={totalLate > 0 ? 'À traiter en priorité' : 'Aucun retard'}
+        />
         <KpiCard
           label="Production du mois"
           value={formatFCFA(0)}
@@ -83,13 +89,25 @@ export function DashboardPage() {
                   </div>
                   <div>
                     <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-                      <span>Avancement</span>
-                      <span>{site.avancementPct} %</span>
+                      <span>
+                        Avancement
+                        {site.tasksLate > 0 && (
+                          <span className="text-red font-medium"> · {site.tasksLate} tâche(s) en retard</span>
+                        )}
+                      </span>
+                      <span>
+                        {site.avancementPct} % <span className="text-slate-400">/ plan. {site.avancementPlanifie} %</span>
+                      </span>
                     </div>
-                    <div className="h-2 w-full rounded-full bg-slate-100">
+                    <div className="relative h-2 w-full rounded-full bg-slate-100">
                       <div
                         className="h-2 rounded-full bg-cyan"
                         style={{ width: `${site.avancementPct}%` }}
+                      />
+                      <div
+                        className="absolute top-0 h-2 w-0.5 bg-navy/70"
+                        style={{ left: `${Math.min(100, Math.max(0, site.avancementPlanifie))}%` }}
+                        title={`Planifié : ${site.avancementPlanifie} %`}
                       />
                     </div>
                   </div>

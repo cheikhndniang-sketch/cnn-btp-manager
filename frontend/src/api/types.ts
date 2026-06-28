@@ -30,6 +30,9 @@ export interface Site {
   status: SiteStatus;
   description: string | null;
   avancementPct: number;
+  avancementPlanifie: number;
+  tasksLate: number;
+  tasksTotal: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -42,6 +45,9 @@ export interface Task {
   name: string;
   description: string | null;
   progressPct: number;
+  plannedPct: number;
+  enRetard: boolean;
+  retardJours: number;
   status: TaskStatus;
   weight: number;
   position: number;
@@ -58,6 +64,9 @@ export interface Lot {
   weight: number;
   position: number;
   progressPct: number;
+  plannedPct: number;
+  tasksLate: number;
+  retardJoursMax: number;
   tasks: Task[];
 }
 
@@ -78,6 +87,11 @@ export interface SiteMember {
 
 export interface SiteKpi {
   avancementPct: number;
+  avancementPlanifie: number;
+  ecartPct: number;
+  tasksLate: number;
+  tasksTotal: number;
+  retardMaxJours: number;
   budgetTotal: number;
   joursRestants: number;
   membresCount: number;

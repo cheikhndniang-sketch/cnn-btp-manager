@@ -12,6 +12,11 @@ import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { ImportPlanningDto } from './dto/import-planning.dto';
 import { lotProgress } from './progress.util';
+import {
+  lotPlannedProgress,
+  plannedProgress,
+  taskLateness,
+} from './schedule.util';
 
 interface Actor {
   userId: string;
@@ -24,6 +29,9 @@ export interface TaskView {
   name: string;
   description: string | null;
   progressPct: number;
+  plannedPct: number;
+  enRetard: boolean;
+  retardJours: number;
   status: TaskStatus;
   weight: number;
   position: number;
@@ -40,6 +48,9 @@ export interface LotView {
   weight: number;
   position: number;
   progressPct: number;
+  plannedPct: number;
+  tasksLate: number;
+  retardJoursMax: number;
   tasks: TaskView[];
 }
 
@@ -59,7 +70,8 @@ export class PlanningService {
       orderBy: [{ position: 'asc' }, { code: 'asc' }],
       include: { tasks: { orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] } },
     });
-    return lots.map(mapLot);
+    const asOf = new Date();
+    return lots.map((l) => mapLot(l, asOf));
   }
 
   async createLot(
@@ -189,7 +201,8 @@ export class PlanningService {
       where: { lotId },
       orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
     });
-    return tasks.map(mapTask);
+    const asOf = new Date();
+    return tasks.map((t) => mapTask(t, asOf));
   }
 
   async createTask(
@@ -327,13 +340,21 @@ function reconcile(
   return { progressPct: p, status: s };
 }
 
-function mapTask(task: Task): TaskView {
+function mapTask(task: Task, asOf: Date = new Date()): TaskView {
+  const { enRetard, retardJours } = taskLateness(
+    task.endDate,
+    task.progressPct,
+    asOf,
+  );
   return {
     id: task.id,
     lotId: task.lotId,
     name: task.name,
     description: task.description,
     progressPct: task.progressPct,
+    plannedPct: plannedProgress(task.startDate, task.endDate, asOf),
+    enRetard,
+    retardJours,
     status: task.status,
     weight: task.weight,
     position: task.position,
@@ -342,8 +363,8 @@ function mapTask(task: Task): TaskView {
   };
 }
 
-function mapLot(lot: Lot & { tasks: Task[] }): LotView {
-  const tasks = lot.tasks.map(mapTask);
+function mapLot(lot: Lot & { tasks: Task[] }, asOf: Date = new Date()): LotView {
+  const tasks = lot.tasks.map((t) => mapTask(t, asOf));
   return {
     id: lot.id,
     siteId: lot.siteId,
@@ -353,6 +374,17 @@ function mapLot(lot: Lot & { tasks: Task[] }): LotView {
     weight: lot.weight,
     position: lot.position,
     progressPct: lotProgress(tasks),
+    plannedPct: lotPlannedProgress(
+      lot.tasks.map((t) => ({
+        progressPct: t.progressPct,
+        weight: t.weight,
+        startDate: t.startDate,
+        endDate: t.endDate,
+      })),
+      asOf,
+    ),
+    tasksLate: tasks.filter((t) => t.enRetard).length,
+    retardJoursMax: tasks.reduce((m, t) => Math.max(m, t.retardJours), 0),
     tasks,
   };
 }
