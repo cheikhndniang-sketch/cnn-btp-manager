@@ -8,8 +8,10 @@ import {
   Param,
   Patch,
   Post,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { Role } from '@prisma/client';
 import {
   AuthenticatedUser,
@@ -44,6 +46,23 @@ export class PlanningController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.planning.importPlanning(siteId, dto, this.actor(user));
+  }
+
+  // ---- Export MS Project (XML MSPDI) ----
+
+  @Get('planning/export.xml')
+  async exportMspdi(
+    @Param('siteId') siteId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<string> {
+    const { xml, filename } = await this.planning.exportMspdi(
+      siteId,
+      this.actor(user),
+    );
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return xml;
   }
 
   // ---- Lots ----

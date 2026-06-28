@@ -79,4 +79,8 @@ export const planningApi = {
       .then((r) => r.data),
   deleteTask: (siteId: string, lotId: string, taskId: string) =>
     api.delete(`/sites/${siteId}/lots/${lotId}/tasks/${taskId}`).then((r) => r.data),
+  exportMspProject: (siteId: string) =>
+    api
+      .get(`/sites/${siteId}/planning/export.xml`, { responseType: 'blob' })
+      .then((r) => r.data as Blob),
 };

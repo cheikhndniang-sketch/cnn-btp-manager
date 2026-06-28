@@ -114,6 +114,21 @@ export function PlanningTab({
               >
                 PDF
               </button>
+              <button
+                className="btn-secondary text-sm"
+                onClick={async () => {
+                  const blob = await planningApi.exportMspProject(siteId);
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `Planning-${siteReference}-${new Date().toISOString().slice(0, 10)}.xml`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                title="Planning complet au format MS Project (XML, ouvrable dans MS Project)"
+              >
+                MS Project
+              </button>
             </>
           )}
           {canManageLots && (

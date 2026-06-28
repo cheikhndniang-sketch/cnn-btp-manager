@@ -17,6 +17,7 @@ import {
   plannedProgress,
   taskLateness,
 } from './schedule.util';
+import { buildMspdi } from './mspdi.util';
 
 interface Actor {
   userId: string;
@@ -186,6 +187,41 @@ export class PlanningService {
     });
 
     return { lots: dto.lots.length, tasks: taskCount };
+  }
+
+  /** Génère le planning au format XML MS Project (MSPDI). */
+  async exportMspdi(
+    siteId: string,
+    actor: Actor,
+  ): Promise<{ xml: string; filename: string }> {
+    await this.sites.assertCanAccess(siteId, actor);
+    const site = await this.prisma.site.findUnique({ where: { id: siteId } });
+    if (!site) {
+      throw new NotFoundException('Chantier introuvable');
+    }
+    const lots = await this.prisma.lot.findMany({
+      where: { siteId },
+      orderBy: [{ position: 'asc' }, { code: 'asc' }],
+      include: { tasks: { orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] } },
+    });
+
+    const xml = buildMspdi(
+      { name: site.name, reference: site.reference },
+      lots.map((l) => ({
+        code: l.code,
+        name: l.name,
+        progressPct: lotProgress(l.tasks),
+        tasks: l.tasks.map((t) => ({
+          name: t.name,
+          progressPct: t.progressPct,
+          startDate: t.startDate,
+          endDate: t.endDate,
+        })),
+      })),
+    );
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    return { xml, filename: `Planning-${site.reference}-${stamp}.xml` };
   }
 
   // ---- Tâches ----
