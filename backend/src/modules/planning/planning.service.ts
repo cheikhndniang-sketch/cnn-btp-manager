@@ -33,6 +33,7 @@ export interface TaskView {
   plannedPct: number;
   enRetard: boolean;
   retardJours: number;
+  aDemarrer: boolean;
   status: TaskStatus;
   weight: number;
   position: number;
@@ -51,6 +52,7 @@ export interface LotView {
   progressPct: number;
   plannedPct: number;
   tasksLate: number;
+  tasksToStart: number;
   retardJoursMax: number;
   startDate: Date | null;
   endDate: Date | null;
@@ -439,6 +441,12 @@ function mapTask(task: Task, asOf: Date = new Date()): TaskView {
     task.progressPct,
     asOf,
   );
+  // À démarrer : avancement 0 %, date de début passée, et pas (encore) en retard de fin.
+  const aDemarrer =
+    !enRetard &&
+    task.progressPct === 0 &&
+    task.startDate !== null &&
+    task.startDate.getTime() <= asOf.getTime();
   return {
     id: task.id,
     lotId: task.lotId,
@@ -448,6 +456,7 @@ function mapTask(task: Task, asOf: Date = new Date()): TaskView {
     plannedPct: plannedProgress(task.startDate, task.endDate, asOf),
     enRetard,
     retardJours,
+    aDemarrer,
     status: task.status,
     weight: task.weight,
     position: task.position,
@@ -487,6 +496,7 @@ function mapLot(lot: Lot & { tasks: Task[] }, asOf: Date = new Date()): LotView 
       asOf,
     ),
     tasksLate: tasks.filter((t) => t.enRetard).length,
+    tasksToStart: tasks.filter((t) => t.aDemarrer).length,
     retardJoursMax: tasks.reduce((m, t) => Math.max(m, t.retardJours), 0),
     tasks,
   };

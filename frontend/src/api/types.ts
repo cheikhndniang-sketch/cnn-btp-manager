@@ -48,6 +48,7 @@ export interface Task {
   plannedPct: number;
   enRetard: boolean;
   retardJours: number;
+  aDemarrer: boolean;
   status: TaskStatus;
   weight: number;
   position: number;
@@ -66,6 +67,7 @@ export interface Lot {
   progressPct: number;
   plannedPct: number;
   tasksLate: number;
+  tasksToStart: number;
   retardJoursMax: number;
   startDate: string | null;
   endDate: string | null;
