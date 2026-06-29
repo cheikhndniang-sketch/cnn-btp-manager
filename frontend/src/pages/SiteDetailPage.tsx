@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { sitesApi } from '@/api/endpoints';
+import { sitesApi, planningApi, financeApi, sousTraitanceApi, travauxSuppApi } from '@/api/endpoints';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { KpiCard } from '@/components/KpiCard';
 import { PlanningTab } from '@/components/PlanningTab';
@@ -10,6 +10,7 @@ import { SousTraitanceTab } from '@/components/SousTraitanceTab';
 import { DocumentsTab } from '@/components/DocumentsTab';
 import { TSTab } from '@/components/TSTab';
 import { formatDate, formatFCFA } from '@/lib/format';
+import { exportRapportToPdf } from '@/lib/exportRapport';
 import { ROLE_LABELS } from '@/api/types';
 
 const TABS = [
@@ -24,6 +25,7 @@ const TABS = [
 export function SiteDetailPage() {
   const { id = '' } = useParams();
   const [tab, setTab] = useState<string>('general');
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   const siteQuery = useQuery({
     queryKey: ['site', id],
@@ -40,6 +42,37 @@ export function SiteDetailPage() {
   const site = siteQuery.data;
   const kpi = kpiQuery.data;
 
+  const handleRapportPdf = async () => {
+    if (!site || exportingPdf) return;
+    setExportingPdf(true);
+    try {
+      const [lots, situations, sousTraitants, travauxSupp] = await Promise.all([
+        planningApi.listLots(id),
+        financeApi.listSituations(id),
+        sousTraitanceApi.list(id),
+        travauxSuppApi.list(id),
+      ]);
+
+      const validees = situations.filter((s) => s.status === 'VALIDEE' || s.status === 'PAYEE');
+      const lastSituation = validees.sort((a, b) => b.numero - a.numero)[0] ?? null;
+
+      const now = new Date();
+      const periodeLabel = new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' }).format(now);
+
+      exportRapportToPdf({
+        site,
+        kpi: kpi ?? null,
+        lots,
+        lastSituation,
+        sousTraitants,
+        travauxSupp,
+        periodeLabel,
+      });
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   return (
     <DashboardLayout>
       <Link to="/dashboard" className="text-sm text-cyan-dark hover:underline">
@@ -52,11 +85,20 @@ export function SiteDetailPage() {
         <p className="mt-6 text-sm text-red">Chantier introuvable ou accès refusé.</p>
       ) : (
         <>
-          <header className="mt-4 mb-6">
-            <h1 className="text-2xl font-bold text-navy">{site.name}</h1>
-            <p className="text-sm text-slate-500">
-              {site.reference} · {site.location ?? '—'}
-            </p>
+          <header className="mt-4 mb-6 flex items-start justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-navy">{site.name}</h1>
+              <p className="text-sm text-slate-500">
+                {site.reference} · {site.location ?? '—'}
+              </p>
+            </div>
+            <button
+              onClick={handleRapportPdf}
+              disabled={exportingPdf}
+              className="btn-secondary text-sm shrink-0"
+            >
+              {exportingPdf ? 'Génération…' : 'Rapport PDF'}
+            </button>
           </header>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
