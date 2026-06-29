@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   IsDateString,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   Min,
@@ -29,6 +30,12 @@ export class UpdateLotDto {
   @IsInt()
   @Min(0)
   position?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  montantMarcheHt?: number;
 
   @IsOptional()
   @IsDateString()

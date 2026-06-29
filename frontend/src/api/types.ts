@@ -64,6 +64,7 @@ export interface Lot {
   description: string | null;
   weight: number;
   position: number;
+  montantMarcheHt: number;
   progressPct: number;
   plannedPct: number;
   tasksLate: number;
@@ -101,6 +102,42 @@ export interface SiteKpi {
   membresCount: number;
   alertesCount: number;
 }
+
+export type SituationStatus = 'BROUILLON' | 'VALIDEE' | 'PAYEE';
+
+export interface SituationLigne {
+  id: string;
+  lotId: string;
+  lotCode: string;
+  lotName: string;
+  montantMarcheHt: number;
+  avancementCumul: number;
+  montantHtCumul: number;
+  notes: string | null;
+}
+
+export interface Situation {
+  id: string;
+  siteId: string;
+  numero: number;
+  periode: string;
+  dateEmission: string;
+  status: SituationStatus;
+  notes: string | null;
+  lignes: SituationLigne[];
+  totalHt: number;
+  totalTva: number;
+  totalTtc: number;
+  tvaRate: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const SITUATION_STATUS_LABELS: Record<SituationStatus, string> = {
+  BROUILLON: 'Brouillon',
+  VALIDEE: 'Validée',
+  PAYEE: 'Payée',
+};
 
 export interface LoginResponse {
   access_token: string;

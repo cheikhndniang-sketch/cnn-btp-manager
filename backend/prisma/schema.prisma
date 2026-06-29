@@ -76,27 +76,30 @@ model Site {
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
-  members SiteMember[]
-  lots    Lot[]
+  members    SiteMember[]
+  lots       Lot[]
+  situations Situation[]
 
   @@index([status])
 }
 
 model Lot {
-  id          String    @id @default(uuid())
-  siteId      String
-  code        String
-  name        String
-  description String?
-  weight      Int       @default(1)
-  position    Int       @default(0)
-  startDate   DateTime? @db.Date
-  endDate     DateTime? @db.Date
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id              String    @id @default(uuid())
+  siteId          String
+  code            String
+  name            String
+  description     String?
+  weight          Int       @default(1)
+  position        Int       @default(0)
+  montantMarcheHt BigInt    @default(0)
+  startDate       DateTime? @db.Date
+  endDate         DateTime? @db.Date
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  site  Site   @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  tasks Task[]
+  site      Site             @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  tasks     Task[]
+  sitLignes SituationLigne[]
 
   @@unique([siteId, code])
   @@index([siteId])
@@ -157,6 +160,47 @@ model SiteMember {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([siteId, userId])
+}
+
+enum SituationStatus {
+  BROUILLON
+  VALIDEE
+  PAYEE
+}
+
+model Situation {
+  id           String          @id @default(uuid())
+  siteId       String
+  numero       Int
+  periode      String          // format "2025-01"
+  dateEmission DateTime        @db.Date
+  status       SituationStatus @default(BROUILLON)
+  notes        String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  site   Site             @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  lignes SituationLigne[]
+
+  @@unique([siteId, numero])
+  @@index([siteId])
+}
+
+model SituationLigne {
+  id              String   @id @default(uuid())
+  situationId     String
+  lotId           String
+  avancementCumul Decimal  @default(0) @db.Decimal(5, 2)
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  situation Situation @relation(fields: [situationId], references: [id], onDelete: Cascade)
+  lot       Lot       @relation(fields: [lotId], references: [id], onDelete: Cascade)
+
+  @@unique([situationId, lotId])
+  @@index([situationId])
+  @@index([lotId])
 }
 
 model AuditLog {

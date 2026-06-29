@@ -5,6 +5,7 @@ import { sitesApi } from '@/api/endpoints';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { KpiCard } from '@/components/KpiCard';
 import { PlanningTab } from '@/components/PlanningTab';
+import { FinanceTab } from '@/components/FinanceTab';
 import { formatDate, formatFCFA } from '@/lib/format';
 import { ROLE_LABELS } from '@/api/types';
 
@@ -12,7 +13,7 @@ const TABS = [
   { key: 'general', label: 'Vue générale', enabled: true },
   { key: 'planning', label: 'Planning', enabled: true },
   { key: 'rapports', label: 'Rapports', enabled: false },
-  { key: 'finance', label: 'Finance', enabled: false },
+  { key: 'finance', label: 'Finance', enabled: true },
   { key: 'st', label: 'Sous-traitance', enabled: false },
   { key: 'docs', label: 'Documents', enabled: false },
 ] as const;
@@ -120,6 +121,12 @@ export function SiteDetailPage() {
             </div>
           ) : tab === 'planning' ? (
             <PlanningTab
+              siteId={site.id}
+              siteName={site.name}
+              siteReference={site.reference}
+            />
+          ) : tab === 'finance' ? (
+            <FinanceTab
               siteId={site.id}
               siteName={site.name}
               siteReference={site.reference}

@@ -124,6 +124,8 @@ export class PlanningService {
     if (dto.description !== undefined) data.description = dto.description;
     if (dto.weight !== undefined) data.weight = dto.weight;
     if (dto.position !== undefined) data.position = dto.position;
+    if (dto.montantMarcheHt !== undefined)
+      data.montantMarcheHt = BigInt(Math.round(dto.montantMarcheHt));
     if (dto.startDate !== undefined)
       data.startDate = dto.startDate ? new Date(dto.startDate) : null;
     if (dto.endDate !== undefined)

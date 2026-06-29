@@ -5,10 +5,18 @@ import type {
   Site,
   SiteKpi,
   SiteMember,
+  Situation,
   Task,
   TaskStatus,
   User,
 } from './types';
+
+export interface CreateSituationPayload {
+  numero: number;
+  periode: string;
+  dateEmission: string;
+  notes?: string;
+}
 
 export interface LotPayload {
   code?: string;
@@ -73,6 +81,35 @@ export const sitesApi = {
   kpi: (id: string) => api.get<SiteKpi>(`/sites/${id}/kpi`).then((r) => r.data),
   members: (id: string) =>
     api.get<SiteMember[]>(`/sites/${id}/members`).then((r) => r.data),
+};
+
+export const financeApi = {
+  listSituations: (siteId: string) =>
+    api.get<Situation[]>(`/sites/${siteId}/finance/situations`).then((r) => r.data),
+  getSituation: (siteId: string, id: string) =>
+    api.get<Situation>(`/sites/${siteId}/finance/situations/${id}`).then((r) => r.data),
+  createSituation: (siteId: string, payload: CreateSituationPayload) =>
+    api.post<Situation>(`/sites/${siteId}/finance/situations`, payload).then((r) => r.data),
+  updateSituation: (siteId: string, id: string, payload: { status?: string; notes?: string }) =>
+    api.patch<Situation>(`/sites/${siteId}/finance/situations/${id}`, payload).then((r) => r.data),
+  deleteSituation: (siteId: string, id: string) =>
+    api.delete(`/sites/${siteId}/finance/situations/${id}`).then((r) => r.data),
+  updateLigne: (
+    siteId: string,
+    situationId: string,
+    ligneId: string,
+    payload: { avancementCumul?: number; notes?: string },
+  ) =>
+    api
+      .patch<Situation>(
+        `/sites/${siteId}/finance/situations/${situationId}/lignes/${ligneId}`,
+        payload,
+      )
+      .then((r) => r.data),
+  updateLotBudget: (siteId: string, lotId: string, montantMarcheHt: number) =>
+    api
+      .patch(`/sites/${siteId}/finance/lots/${lotId}/budget`, { montantMarcheHt })
+      .then((r) => r.data),
 };
 
 export const planningApi = {
