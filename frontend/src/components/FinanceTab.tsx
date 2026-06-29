@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { financeApi, planningApi, type CreateSituationPayload } from '@/api/endpoints';
+import { financeApi, planningApi, sitesApi, type CreateSituationPayload } from '@/api/endpoints';
 import { useAuth } from '@/hooks/useAuth';
 import {
   SITUATION_STATUS_LABELS,
   type Role,
+  type Site,
   type Situation,
   type SituationStatus,
 } from '@/api/types';
@@ -23,20 +24,90 @@ const STATUS_BADGE: Record<SituationStatus, string> = {
   PAYEE: 'bg-cyan/10 text-cyan-dark',
 };
 
-const STATUS_NEXT: Record<SituationStatus, { label: string; value: SituationStatus } | null> = {
+const STATUS_NEXT: Record<
+  SituationStatus,
+  { label: string; value: SituationStatus } | null
+> = {
   BROUILLON: { label: 'Valider', value: 'VALIDEE' },
   VALIDEE: { label: 'Marquer payée', value: 'PAYEE' },
   PAYEE: null,
 };
 
-function thisMonth(): string {
+function thisMonth() {
   return new Date().toISOString().slice(0, 7);
 }
-
-function thisDay(): string {
+function thisDay() {
   return new Date().toISOString().slice(0, 10);
 }
 
+/* ── Champ numérique éditable ─────────────────────────────────────────── */
+function EditableNum({
+  label,
+  value,
+  format,
+  onSave,
+  canEdit,
+  unit = '',
+  step = 1,
+  max,
+}: {
+  label: string;
+  value: number;
+  format: (v: number) => string;
+  onSave: (v: number) => void;
+  canEdit: boolean;
+  unit?: string;
+  step?: number;
+  max?: number;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(String(value));
+
+  if (!editing)
+    return (
+      <div className="text-right">
+        <div className="text-xs text-slate-500 mb-0.5">{label}</div>
+        <div
+          className={`text-sm font-medium text-navy ${canEdit ? 'cursor-pointer hover:text-cyan-dark' : ''}`}
+          onClick={() => canEdit && setEditing(true)}
+          title={canEdit ? 'Cliquer pour modifier' : undefined}
+        >
+          {format(value)}
+          {unit && <span className="text-xs text-slate-400 ml-1">{unit}</span>}
+        </div>
+      </div>
+    );
+
+  return (
+    <form
+      className="flex flex-col items-end gap-1"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSave(Number(val));
+        setEditing(false);
+      }}
+    >
+      <label className="text-xs text-slate-500">{label}</label>
+      <div className="flex items-center gap-1">
+        <input
+          type="number"
+          min={0}
+          max={max}
+          step={step}
+          className="input w-28 text-right text-xs py-0.5"
+          value={val}
+          autoFocus
+          onChange={(e) => setVal(e.target.value)}
+        />
+        {unit && <span className="text-xs text-slate-400">{unit}</span>}
+        <button type="submit" className="btn-primary text-xs px-2 py-1">OK</button>
+        <button type="button" className="btn-secondary text-xs px-2 py-1" onClick={() => setEditing(false)}>✕</button>
+      </div>
+    </form>
+  );
+}
+
+/* ── Composant principal ─────────────────────────────────────────────── */
 export function FinanceTab({
   siteId,
   siteName,
@@ -53,11 +124,14 @@ export function FinanceTab({
   const [showCreate, setShowCreate] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
 
+  const siteQuery = useQuery({
+    queryKey: ['site', siteId],
+    queryFn: () => sitesApi.get(siteId),
+  });
   const { data: situations, isLoading } = useQuery({
     queryKey: ['finance', siteId],
     queryFn: () => financeApi.listSituations(siteId),
   });
-
   const { data: lots } = useQuery({
     queryKey: ['planning', siteId],
     queryFn: () => planningApi.listLots(siteId),
@@ -66,12 +140,28 @@ export function FinanceTab({
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ['finance', siteId] });
     void queryClient.invalidateQueries({ queryKey: ['planning', siteId] });
-    void queryClient.invalidateQueries({ queryKey: ['site', siteId, 'kpi'] });
+    void queryClient.invalidateQueries({ queryKey: ['site', siteId] });
   };
 
-  if (isLoading) return <p className="py-8 text-center text-sm text-slate-500">Chargement…</p>;
+  const updateSite = useMutation({
+    mutationFn: (payload: Partial<Pick<Site, 'tauxRg' | 'avanceForfaitaire'>>) =>
+      sitesApi.update(siteId, payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['site', siteId] });
+    },
+  });
+
+  const site = siteQuery.data;
+
+  if (isLoading || !site)
+    return <p className="py-8 text-center text-sm text-slate-500">Chargement…</p>;
 
   const totalBudgetLots = lots?.reduce((a, l) => a + l.montantMarcheHt, 0) ?? 0;
+  const totalDeductionAvances =
+    situations
+      ?.filter((s) => s.status !== 'BROUILLON')
+      .reduce((a, s) => a + s.deductionAvance, 0) ?? 0;
+  const avanceRestante = site.avanceForfaitaire - totalDeductionAvances;
 
   return (
     <div className="space-y-4">
@@ -82,6 +172,41 @@ export function FinanceTab({
             {showCreate ? 'Annuler' : '+ Nouvelle situation'}
           </button>
         )}
+      </div>
+
+      {/* Paramètres financiers du chantier */}
+      <div className="card">
+        <h3 className="font-medium text-navy text-sm mb-3">Paramètres financiers</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <EditableNum
+            label="Taux RG"
+            value={Math.round(site.tauxRg * 100)}
+            format={(v) => `${v} %`}
+            unit=""
+            step={1}
+            max={100}
+            canEdit={canWrite}
+            onSave={(v) => updateSite.mutate({ tauxRg: v / 100 })}
+          />
+          <EditableNum
+            label="Avance forfaitaire"
+            value={site.avanceForfaitaire}
+            format={formatFCFA}
+            step={1000}
+            canEdit={canWrite}
+            onSave={(v) => updateSite.mutate({ avanceForfaitaire: v })}
+          />
+          <div className="text-right">
+            <div className="text-xs text-slate-500 mb-0.5">Avances récupérées</div>
+            <div className="text-sm font-medium text-navy">{formatFCFA(totalDeductionAvances)}</div>
+          </div>
+          <div className="text-right">
+            <div className="text-xs text-slate-500 mb-0.5">Solde avance</div>
+            <div className={`text-sm font-medium ${avanceRestante < 0 ? 'text-red' : 'text-green'}`}>
+              {formatFCFA(avanceRestante)}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Budget par lot */}
@@ -150,33 +275,18 @@ export function FinanceTab({
 }
 
 /* ── Budget par lot ────────────────────────────────────────────────────── */
-
 function LotBudgetRow({
-  siteId,
-  lotId,
-  code,
-  name,
-  montantMarcheHt,
-  canWrite,
-  onChange,
+  siteId, lotId, code, name, montantMarcheHt, canWrite, onChange,
 }: {
-  siteId: string;
-  lotId: string;
-  code: string;
-  name: string;
-  montantMarcheHt: number;
-  canWrite: boolean;
-  onChange: () => void;
+  siteId: string; lotId: string; code: string; name: string;
+  montantMarcheHt: number; canWrite: boolean; onChange: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(String(montantMarcheHt));
 
   const save = useMutation({
     mutationFn: () => financeApi.updateLotBudget(siteId, lotId, Number(val)),
-    onSuccess: () => {
-      setEditing(false);
-      onChange();
-    },
+    onSuccess: () => { setEditing(false); onChange(); },
   });
 
   return (
@@ -184,22 +294,9 @@ function LotBudgetRow({
       <span className="text-cyan-dark font-medium w-16 shrink-0">{code}</span>
       <span className="flex-1 text-navy truncate">{name}</span>
       {editing ? (
-        <form
-          className="flex items-center gap-1"
-          onSubmit={(e) => {
-            e.preventDefault();
-            save.mutate();
-          }}
-        >
-          <input
-            type="number"
-            min={0}
-            step={1}
-            className="input w-36 text-right text-xs"
-            value={val}
-            onChange={(e) => setVal(e.target.value)}
-            autoFocus
-          />
+        <form className="flex items-center gap-1" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
+          <input type="number" min={0} step={1} className="input w-36 text-right text-xs"
+            value={val} onChange={(e) => setVal(e.target.value)} autoFocus />
           <button type="submit" className="btn-primary text-xs px-2 py-1">OK</button>
           <button type="button" className="btn-secondary text-xs px-2 py-1" onClick={() => setEditing(false)}>✕</button>
         </form>
@@ -209,23 +306,16 @@ function LotBudgetRow({
           onClick={() => canWrite && setEditing(true)}
           title={canWrite ? 'Cliquer pour modifier' : undefined}
         >
-          {montantMarcheHt > 0 ? formatFCFA(montantMarcheHt) : canWrite ? '— cliquer pour saisir' : '—'}
+          {montantMarcheHt > 0 ? formatFCFA(montantMarcheHt) : canWrite ? '— saisir le marché' : '—'}
         </span>
       )}
     </div>
   );
 }
 
-/* ── Formulaire création situation ────────────────────────────────────── */
-
-function CreateSituationForm({
-  siteId,
-  nextNumero,
-  onSuccess,
-}: {
-  siteId: string;
-  nextNumero: number;
-  onSuccess: () => void;
+/* ── Formulaire création ──────────────────────────────────────────────── */
+function CreateSituationForm({ siteId, nextNumero, onSuccess }: {
+  siteId: string; nextNumero: number; onSuccess: () => void;
 }) {
   const [numero, setNumero] = useState(nextNumero);
   const [periode, setPeriode] = useState(thisMonth());
@@ -234,64 +324,30 @@ function CreateSituationForm({
 
   const create = useMutation({
     mutationFn: () => {
-      const payload: CreateSituationPayload = {
-        numero,
-        periode,
-        dateEmission,
-        notes: notes || undefined,
-      };
+      const payload: CreateSituationPayload = { numero, periode, dateEmission, notes: notes || undefined };
       return financeApi.createSituation(siteId, payload);
     },
     onSuccess,
   });
 
   return (
-    <form
-      className="card flex flex-wrap items-end gap-3"
-      onSubmit={(e) => {
-        e.preventDefault();
-        create.mutate();
-      }}
-    >
+    <form className="card flex flex-wrap items-end gap-3" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
       <div>
         <label className="block text-xs text-slate-500 mb-1">N° situation</label>
-        <input
-          type="number"
-          min={1}
-          className="input w-20"
-          value={numero}
-          onChange={(e) => setNumero(Number(e.target.value))}
-          required
-        />
+        <input type="number" min={1} className="input w-20" value={numero}
+          onChange={(e) => setNumero(Number(e.target.value))} required />
       </div>
       <div>
         <label className="block text-xs text-slate-500 mb-1">Période</label>
-        <input
-          type="month"
-          className="input w-36"
-          value={periode}
-          onChange={(e) => setPeriode(e.target.value)}
-          required
-        />
+        <input type="month" className="input w-36" value={periode} onChange={(e) => setPeriode(e.target.value)} required />
       </div>
       <div>
         <label className="block text-xs text-slate-500 mb-1">Date d'émission</label>
-        <input
-          type="date"
-          className="input w-36"
-          value={dateEmission}
-          onChange={(e) => setDateEmission(e.target.value)}
-          required
-        />
+        <input type="date" className="input w-36" value={dateEmission} onChange={(e) => setDateEmission(e.target.value)} required />
       </div>
       <div className="flex-1 min-w-[180px]">
         <label className="block text-xs text-slate-500 mb-1">Notes</label>
-        <input
-          className="input"
-          placeholder="Optionnel"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-        />
+        <input className="input" placeholder="Optionnel" value={notes} onChange={(e) => setNotes(e.target.value)} />
       </div>
       <button type="submit" className="btn-primary" disabled={create.isPending}>
         {create.isPending ? 'Création…' : 'Créer'}
@@ -301,25 +357,12 @@ function CreateSituationForm({
 }
 
 /* ── Carte Situation ───────────────────────────────────────────────────── */
-
 function SituationCard({
-  siteId,
-  siteName,
-  siteReference,
-  situation: s,
-  open,
-  onToggle,
-  canWrite,
-  onChange,
+  siteId, siteName, siteReference, situation: s, open, onToggle, canWrite, onChange,
 }: {
-  siteId: string;
-  siteName: string;
-  siteReference: string;
-  situation: Situation;
-  open: boolean;
-  onToggle: () => void;
-  canWrite: boolean;
-  onChange: () => void;
+  siteId: string; siteName: string; siteReference: string;
+  situation: Situation; open: boolean; onToggle: () => void;
+  canWrite: boolean; onChange: () => void;
 }) {
   const queryClient = useQueryClient();
 
@@ -332,22 +375,28 @@ function SituationCard({
     },
   });
 
+  const updateDed = useMutation({
+    mutationFn: (deductionAvance: number) =>
+      financeApi.updateSituation(siteId, s.id, { deductionAvance }),
+    onSuccess: onChange,
+  });
+
   const remove = useMutation({
     mutationFn: () => financeApi.deleteSituation(siteId, s.id),
     onSuccess: onChange,
   });
 
   const next = STATUS_NEXT[s.status];
+  const locked = s.status !== 'BROUILLON' || !canWrite;
 
   return (
     <div className="card">
+      {/* En-tête de la carte */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <button
-            onClick={onToggle}
+          <button onClick={onToggle}
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-slate-300 text-lg leading-none text-navy hover:bg-surface-1"
-            aria-label={open ? 'Réduire' : 'Développer'}
-          >
+            aria-label={open ? 'Réduire' : 'Développer'}>
             {open ? '−' : '+'}
           </button>
           <div className="min-w-0">
@@ -355,36 +404,25 @@ function SituationCard({
               Situation n° {s.numero}
               <span className="text-slate-400 font-normal"> · {s.periode}</span>
             </div>
-            <div className="text-xs text-slate-500">
-              Émise le {s.dateEmission.slice(0, 10)}
-            </div>
+            <div className="text-xs text-slate-500">Émise le {s.dateEmission.toString().slice(0, 10)}</div>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
           <div className="text-right">
-            <div className="text-sm font-bold text-navy">{formatFCFA(s.totalHt)} HT</div>
-            <div className="text-xs text-slate-500">{formatFCFA(s.totalTtc)} TTC</div>
+            <div className="text-sm font-bold text-navy">{formatFCFA(s.netAPayer)}<span className="text-xs font-normal text-slate-400 ml-1">net</span></div>
+            <div className="text-xs text-slate-500">{formatFCFA(s.totalTtc)} TTC brut</div>
           </div>
           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[s.status]}`}>
             {SITUATION_STATUS_LABELS[s.status]}
           </span>
           {canWrite && next && (
-            <button
-              className="btn-secondary text-xs"
-              onClick={() => updateStatus.mutate(next.value)}
-              disabled={updateStatus.isPending}
-            >
+            <button className="btn-secondary text-xs" onClick={() => updateStatus.mutate(next.value)} disabled={updateStatus.isPending}>
               {next.label}
             </button>
           )}
           {canWrite && s.status === 'BROUILLON' && (
-            <button
-              className="text-xs text-red hover:underline"
-              onClick={() => remove.mutate()}
-            >
-              Supprimer
-            </button>
+            <button className="text-xs text-red hover:underline" onClick={() => remove.mutate()}>Supprimer</button>
           )}
           <button
             className="btn-secondary text-xs"
@@ -392,7 +430,6 @@ function SituationCard({
               const m = await import('@/lib/exportFinance');
               m.exportSituationToPdf({ name: siteName, reference: siteReference }, s);
             }}
-            title="Télécharger la situation en PDF"
           >
             PDF
           </button>
@@ -400,7 +437,8 @@ function SituationCard({
       </div>
 
       {open && (
-        <div className="mt-4 space-y-2">
+        <div className="mt-4 space-y-4">
+          {/* Tableau décompte */}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -408,7 +446,7 @@ function SituationCard({
                   <th className="text-left pb-2 pr-3">Lot</th>
                   <th className="text-right pb-2 pr-3 w-32">Marché HT</th>
                   <th className="text-right pb-2 pr-3 w-24">Avanct. %</th>
-                  <th className="text-right pb-2 w-36">Montant HT cumul</th>
+                  <th className="text-right pb-2 w-36">Montant HT</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -418,32 +456,49 @@ function SituationCard({
                     siteId={siteId}
                     situationId={s.id}
                     ligne={l}
-                    locked={s.status !== 'BROUILLON' || !canWrite}
+                    locked={locked}
                     onChange={onChange}
                   />
                 ))}
               </tbody>
-              <tfoot className="border-t-2 border-slate-300">
+              <tfoot className="border-t-2 border-slate-300 text-sm">
                 <tr className="font-semibold text-navy">
                   <td className="pt-2 pr-3">TOTAL</td>
-                  <td className="text-right pt-2 pr-3">
-                    {formatFCFA(s.lignes.reduce((a, l) => a + l.montantMarcheHt, 0))}
-                  </td>
+                  <td className="text-right pt-2 pr-3">{formatFCFA(s.lignes.reduce((a, l) => a + l.montantMarcheHt, 0))}</td>
                   <td />
                   <td className="text-right pt-2">{formatFCFA(s.totalHt)}</td>
                 </tr>
-                <tr className="text-xs text-slate-500">
-                  <td colSpan={3} className="pt-1 pr-3">
-                    TVA ({(s.tvaRate * 100).toFixed(0)} %)
-                  </td>
-                  <td className="text-right pt-1">{formatFCFA(s.totalTva)}</td>
-                </tr>
-                <tr className="text-sm font-bold text-cyan-dark border-t border-slate-200">
-                  <td colSpan={3} className="pt-2 pr-3">TOTAL TTC</td>
-                  <td className="text-right pt-2">{formatFCFA(s.totalTtc)}</td>
-                </tr>
               </tfoot>
             </table>
+          </div>
+
+          {/* Récapitulatif financier */}
+          <div className="border-t border-slate-200 pt-3 ml-auto max-w-xs w-full space-y-1 text-sm">
+            <Row label={`Montant HT cumulé`} value={formatFCFA(s.totalHt)} />
+            <Row label={`TVA (${(s.tvaRate * 100).toFixed(0)} %)`} value={formatFCFA(s.totalTva)} />
+            <Row label="Total TTC brut" value={formatFCFA(s.totalTtc)} bold />
+            <div className="border-t border-slate-200 pt-1 mt-1" />
+            <Row
+              label={`Retenue de garantie (${(s.tauxRg * 100).toFixed(0)} %)`}
+              value={`− ${formatFCFA(s.montantRg)}`}
+              red
+            />
+            {/* Déduction avance — éditable sur brouillon */}
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-slate-600">Déduction d'avance</span>
+              {locked ? (
+                <span className="font-medium text-orange">− {formatFCFA(s.deductionAvance)}</span>
+              ) : (
+                <DeductionInput
+                  value={s.deductionAvance}
+                  onSave={(v) => updateDed.mutate(v)}
+                />
+              )}
+            </div>
+            <div className="border-t-2 border-navy pt-2 mt-1 flex justify-between font-bold text-navy text-base">
+              <span>NET À PAYER</span>
+              <span>{formatFCFA(s.netAPayer)}</span>
+            </div>
           </div>
         </div>
       )}
@@ -451,26 +506,41 @@ function SituationCard({
   );
 }
 
-/* ── Ligne de décompte ─────────────────────────────────────────────────── */
+function Row({ label, value, bold, red }: { label: string; value: string; bold?: boolean; red?: boolean }) {
+  return (
+    <div className={`flex justify-between ${bold ? 'font-semibold text-navy' : ''}`}>
+      <span className="text-slate-600">{label}</span>
+      <span className={red ? 'text-red font-medium' : bold ? 'text-navy' : ''}>{value}</span>
+    </div>
+  );
+}
 
-function LigneRow({
-  siteId,
-  situationId,
-  ligne: l,
-  locked,
-  onChange,
-}: {
-  siteId: string;
-  situationId: string;
+function DeductionInput({ value, onSave }: { value: number; onSave: (v: number) => void }) {
+  const [v, setV] = useState(value);
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-orange text-sm">−</span>
+      <input
+        type="number" min={0} step={1000}
+        className="input w-32 text-right text-xs py-0.5"
+        value={v}
+        onChange={(e) => setV(Number(e.target.value))}
+        onBlur={() => { if (v !== value) onSave(v); }}
+      />
+    </div>
+  );
+}
+
+/* ── Ligne de décompte ─────────────────────────────────────────────────── */
+function LigneRow({ siteId, situationId, ligne: l, locked, onChange }: {
+  siteId: string; situationId: string;
   ligne: { id: string; lotCode: string; lotName: string; montantMarcheHt: number; avancementCumul: number; montantHtCumul: number };
-  locked: boolean;
-  onChange: () => void;
+  locked: boolean; onChange: () => void;
 }) {
   const [avancement, setAvancement] = useState(l.avancementCumul);
 
   const save = useMutation({
-    mutationFn: (v: number) =>
-      financeApi.updateLigne(siteId, situationId, l.id, { avancementCumul: v }),
+    mutationFn: (v: number) => financeApi.updateLigne(siteId, situationId, l.id, { avancementCumul: v }),
     onSuccess: onChange,
   });
 
@@ -489,16 +559,11 @@ function LigneRow({
         ) : (
           <div className="flex items-center justify-end gap-1">
             <input
-              type="number"
-              min={0}
-              max={100}
-              step={0.5}
+              type="number" min={0} max={100} step={0.5}
               className="input w-16 text-right text-xs py-0.5"
               value={avancement}
               onChange={(e) => setAvancement(Number(e.target.value))}
-              onBlur={() => {
-                if (avancement !== l.avancementCumul) save.mutate(avancement);
-              }}
+              onBlur={() => { if (avancement !== l.avancementCumul) save.mutate(avancement); }}
             />
             <span className="text-xs text-slate-400">%</span>
           </div>

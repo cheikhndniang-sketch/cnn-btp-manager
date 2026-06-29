@@ -25,6 +25,8 @@ export interface Site {
   location: string | null;
   marcheHt: number;
   tvaRate: number;
+  tauxRg: number;
+  avanceForfaitaire: number;
   startDate: string;
   endDatePlanned: string | null;
   status: SiteStatus;
@@ -129,6 +131,11 @@ export interface Situation {
   totalTva: number;
   totalTtc: number;
   tvaRate: number;
+  tauxRg: number;
+  montantRg: number;
+  deductionAvance: number;
+  avanceForfaitaire: number;
+  netAPayer: number;
   createdAt: string;
   updatedAt: string;
 }

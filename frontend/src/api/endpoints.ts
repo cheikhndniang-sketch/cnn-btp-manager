@@ -78,6 +78,10 @@ export const sitesApi = {
     api.post<Site>('/sites', payload).then((r) => r.data),
   get: (id: string) =>
     api.get<Site & { members: SiteMember[] }>(`/sites/${id}`).then((r) => r.data),
+  update: (
+    id: string,
+    payload: Partial<Pick<Site, 'tauxRg' | 'avanceForfaitaire' | 'tvaRate' | 'marcheHt'>>,
+  ) => api.patch<Site>(`/sites/${id}`, payload).then((r) => r.data),
   kpi: (id: string) => api.get<SiteKpi>(`/sites/${id}/kpi`).then((r) => r.data),
   members: (id: string) =>
     api.get<SiteMember[]>(`/sites/${id}/members`).then((r) => r.data),
@@ -90,7 +94,7 @@ export const financeApi = {
     api.get<Situation>(`/sites/${siteId}/finance/situations/${id}`).then((r) => r.data),
   createSituation: (siteId: string, payload: CreateSituationPayload) =>
     api.post<Situation>(`/sites/${siteId}/finance/situations`, payload).then((r) => r.data),
-  updateSituation: (siteId: string, id: string, payload: { status?: string; notes?: string }) =>
+  updateSituation: (siteId: string, id: string, payload: { status?: string; notes?: string; deductionAvance?: number }) =>
     api.patch<Situation>(`/sites/${siteId}/finance/situations/${id}`, payload).then((r) => r.data),
   deleteSituation: (siteId: string, id: string) =>
     api.delete(`/sites/${siteId}/finance/situations/${id}`).then((r) => r.data),

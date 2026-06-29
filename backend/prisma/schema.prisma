@@ -67,14 +67,16 @@ model Site {
   reference      String     @unique
   name           String
   location       String?
-  marcheHt       BigInt
-  tvaRate        Decimal    @default(0.18) @db.Decimal(5, 4)
-  startDate      DateTime   @db.Date
-  endDatePlanned DateTime?  @db.Date
-  status         SiteStatus @default(ACTIVE)
-  description    String?
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  marcheHt          BigInt
+  tvaRate           Decimal   @default(0.18) @db.Decimal(5, 4)
+  tauxRg            Decimal   @default(0.05) @db.Decimal(5, 4)
+  avanceForfaitaire BigInt    @default(0)
+  startDate         DateTime  @db.Date
+  endDatePlanned    DateTime? @db.Date
+  status            SiteStatus @default(ACTIVE)
+  description       String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   members    SiteMember[]
   lots       Lot[]
@@ -173,9 +175,10 @@ model Situation {
   siteId       String
   numero       Int
   periode      String          // format "2025-01"
-  dateEmission DateTime        @db.Date
-  status       SituationStatus @default(BROUILLON)
-  notes        String?
+  dateEmission    DateTime        @db.Date
+  status          SituationStatus @default(BROUILLON)
+  deductionAvance BigInt          @default(0)
+  notes           String?
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
 

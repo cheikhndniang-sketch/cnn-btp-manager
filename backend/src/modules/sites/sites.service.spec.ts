@@ -29,6 +29,8 @@ describe('SitesService', () => {
     location: 'Dakar',
     marcheHt: BigInt('6000000000'),
     tvaRate: new Prisma.Decimal(0.18),
+    tauxRg: new Prisma.Decimal(0.05),
+    avanceForfaitaire: BigInt(0),
     startDate: new Date('2024-01-15'),
     endDatePlanned: new Date('2026-12-31'),
     status: SiteStatus.ACTIVE,

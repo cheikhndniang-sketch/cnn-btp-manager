@@ -20,10 +20,34 @@ const WRITER_ROLES: Role[] = [
 
 type Actor = { userId: string; role: Role };
 
+type SiteFinance = {
+  tvaRate: Decimal;
+  tauxRg: Decimal;
+  avanceForfaitaire: bigint;
+};
+
+type SituationRow = {
+  id: string;
+  siteId: string;
+  numero: number;
+  periode: string;
+  dateEmission: Date;
+  status: SituationStatus;
+  deductionAvance: bigint;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  lignes: Array<{
+    id: string;
+    avancementCumul: Decimal;
+    notes: string | null;
+    lot: { id: string; code: string; name: string; montantMarcheHt: bigint };
+  }>;
+};
+
 function bigToNum(v: bigint): number {
   return Number(v);
 }
-
 function decToNum(v: Decimal): number {
   return Number(v.toString());
 }
@@ -40,33 +64,39 @@ export class FinanceService {
       throw new ForbiddenException('Droits insuffisants');
   }
 
+  private async loadSite(siteId: string): Promise<SiteFinance> {
+    return this.prisma.site.findUniqueOrThrow({
+      where: { id: siteId },
+      select: { tvaRate: true, tauxRg: true, avanceForfaitaire: true },
+    });
+  }
+
   /* ── Situations ──────────────────────────────────────────────────── */
 
   async listSituations(siteId: string, actor: Actor) {
     await this.sites.assertCanAccess(siteId, actor);
-
-    const situations = await this.prisma.situation.findMany({
-      where: { siteId },
-      orderBy: { numero: 'asc' },
-      include: { lignes: { include: { lot: true } } },
-    });
-
-    const site = await this.prisma.site.findUniqueOrThrow({ where: { id: siteId } });
-
-    return situations.map((s) => this.mapSituation(s, site.tvaRate));
+    const [situations, site] = await Promise.all([
+      this.prisma.situation.findMany({
+        where: { siteId },
+        orderBy: { numero: 'asc' },
+        include: { lignes: { include: { lot: true } } },
+      }),
+      this.loadSite(siteId),
+    ]);
+    return situations.map((s) => this.mapSituation(s, site));
   }
 
   async getSituation(siteId: string, situationId: string, actor: Actor) {
     await this.sites.assertCanAccess(siteId, actor);
-
-    const s = await this.prisma.situation.findFirst({
-      where: { id: situationId, siteId },
-      include: { lignes: { include: { lot: true } } },
-    });
+    const [s, site] = await Promise.all([
+      this.prisma.situation.findFirst({
+        where: { id: situationId, siteId },
+        include: { lignes: { include: { lot: true } } },
+      }),
+      this.loadSite(siteId),
+    ]);
     if (!s) throw new NotFoundException('Situation introuvable');
-
-    const site = await this.prisma.site.findUniqueOrThrow({ where: { id: siteId } });
-    return this.mapSituation(s, site.tvaRate);
+    return this.mapSituation(s, site);
   }
 
   async createSituation(siteId: string, dto: CreateSituationDto, actor: Actor) {
@@ -76,29 +106,30 @@ export class FinanceService {
     const exists = await this.prisma.situation.findUnique({
       where: { siteId_numero: { siteId, numero: dto.numero } },
     });
-    if (exists) throw new BadRequestException(`La situation n° ${dto.numero} existe déjà`);
+    if (exists)
+      throw new BadRequestException(`La situation n° ${dto.numero} existe déjà`);
 
     const lots = await this.prisma.lot.findMany({
       where: { siteId },
       orderBy: { position: 'asc' },
     });
 
-    const situation = await this.prisma.situation.create({
-      data: {
-        siteId,
-        numero: dto.numero,
-        periode: dto.periode,
-        dateEmission: new Date(dto.dateEmission),
-        notes: dto.notes,
-        lignes: {
-          create: lots.map((l) => ({ lotId: l.id })),
+    const [situation, site] = await Promise.all([
+      this.prisma.situation.create({
+        data: {
+          siteId,
+          numero: dto.numero,
+          periode: dto.periode,
+          dateEmission: new Date(dto.dateEmission),
+          notes: dto.notes,
+          lignes: { create: lots.map((l) => ({ lotId: l.id })) },
         },
-      },
-      include: { lignes: { include: { lot: true } } },
-    });
+        include: { lignes: { include: { lot: true } } },
+      }),
+      this.loadSite(siteId),
+    ]);
 
-    const site = await this.prisma.site.findUniqueOrThrow({ where: { id: siteId } });
-    return this.mapSituation(situation, site.tvaRate);
+    return this.mapSituation(situation, site);
   }
 
   async updateSituation(
@@ -115,21 +146,29 @@ export class FinanceService {
     });
     if (!s) throw new NotFoundException('Situation introuvable');
 
-    if (
-      s.status === SituationStatus.PAYEE &&
-      dto.status !== SituationStatus.PAYEE
-    ) {
+    if (s.status === SituationStatus.PAYEE && dto.status !== SituationStatus.PAYEE)
       throw new BadRequestException('Une situation payée ne peut pas être modifiée');
-    }
 
-    const updated = await this.prisma.situation.update({
-      where: { id: situationId },
-      data: dto,
-      include: { lignes: { include: { lot: true } } },
-    });
+    const data: {
+      status?: SituationStatus;
+      deductionAvance?: bigint;
+      notes?: string;
+    } = {};
+    if (dto.status !== undefined) data.status = dto.status;
+    if (dto.notes !== undefined) data.notes = dto.notes;
+    if (dto.deductionAvance !== undefined)
+      data.deductionAvance = BigInt(Math.round(dto.deductionAvance));
 
-    const site = await this.prisma.site.findUniqueOrThrow({ where: { id: siteId } });
-    return this.mapSituation(updated, site.tvaRate);
+    const [updated, site] = await Promise.all([
+      this.prisma.situation.update({
+        where: { id: situationId },
+        data,
+        include: { lignes: { include: { lot: true } } },
+      }),
+      this.loadSite(siteId),
+    ]);
+
+    return this.mapSituation(updated, site);
   }
 
   async deleteSituation(siteId: string, situationId: string, actor: Actor) {
@@ -163,17 +202,14 @@ export class FinanceService {
     });
     if (!s) throw new NotFoundException('Situation introuvable');
     if (s.status !== SituationStatus.BROUILLON)
-      throw new BadRequestException('Seule une situation en brouillon peut être modifiée');
+      throw new BadRequestException(
+        'Seule une situation en brouillon peut être modifiée',
+      );
 
     const ligne = await this.prisma.situationLigne.findFirst({
       where: { id: ligneId, situationId },
     });
     if (!ligne) throw new NotFoundException('Ligne introuvable');
-
-    const updated = await this.prisma.situation.findFirst({
-      where: { id: situationId },
-      include: { lignes: { include: { lot: true } } },
-    });
 
     await this.prisma.situationLigne.update({
       where: { id: ligneId },
@@ -183,19 +219,18 @@ export class FinanceService {
       },
     });
 
-    const fresh = await this.prisma.situation.findFirst({
-      where: { id: situationId },
-      include: { lignes: { include: { lot: true } } },
-    });
+    const [fresh, site] = await Promise.all([
+      this.prisma.situation.findFirst({
+        where: { id: situationId },
+        include: { lignes: { include: { lot: true } } },
+      }),
+      this.loadSite(siteId),
+    ]);
 
-    // silence unused variable warning
-    void updated;
-
-    const site = await this.prisma.site.findUniqueOrThrow({ where: { id: siteId } });
-    return this.mapSituation(fresh!, site.tvaRate);
+    return this.mapSituation(fresh!, site);
   }
 
-  /* ── Marché lot ──────────────────────────────────────────────────── */
+  /* ── Budget lot ──────────────────────────────────────────────────── */
 
   async updateLotBudget(
     siteId: string,
@@ -218,32 +253,11 @@ export class FinanceService {
 
   /* ── Mapper ──────────────────────────────────────────────────────── */
 
-  private mapSituation(
-    s: {
-      id: string;
-      siteId: string;
-      numero: number;
-      periode: string;
-      dateEmission: Date;
-      status: SituationStatus;
-      notes: string | null;
-      createdAt: Date;
-      updatedAt: Date;
-      lignes: Array<{
-        id: string;
-        avancementCumul: Decimal;
-        notes: string | null;
-        lot: {
-          id: string;
-          code: string;
-          name: string;
-          montantMarcheHt: bigint;
-        };
-      }>;
-    },
-    tvaRate: Decimal,
-  ) {
-    const tva = decToNum(tvaRate);
+  private mapSituation(s: SituationRow, site: SiteFinance) {
+    const tva = decToNum(site.tvaRate);
+    const tauxRg = decToNum(site.tauxRg);
+    const avanceForfaitaire = bigToNum(site.avanceForfaitaire);
+    const deductionAvance = bigToNum(s.deductionAvance);
 
     const lignes = s.lignes.map((l) => {
       const budget = bigToNum(l.lot.montantMarcheHt);
@@ -264,6 +278,8 @@ export class FinanceService {
     const totalHt = lignes.reduce((a, l) => a + l.montantHtCumul, 0);
     const totalTva = Math.round(totalHt * tva);
     const totalTtc = totalHt + totalTva;
+    const montantRg = Math.round(totalTtc * tauxRg);
+    const netAPayer = totalTtc - montantRg - deductionAvance;
 
     return {
       id: s.id,
@@ -280,6 +296,11 @@ export class FinanceService {
       totalTva,
       totalTtc,
       tvaRate: tva,
+      tauxRg,
+      montantRg,
+      deductionAvance,
+      avanceForfaitaire,
+      netAPayer,
     };
   }
 }

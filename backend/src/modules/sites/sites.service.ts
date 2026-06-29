@@ -23,6 +23,8 @@ export interface SiteDto {
   location: string | null;
   marcheHt: number;
   tvaRate: number;
+  tauxRg: number;
+  avanceForfaitaire: number;
   startDate: Date;
   endDatePlanned: Date | null;
   status: SiteStatus;
@@ -85,6 +87,8 @@ export class SitesService {
       location: site.location,
       marcheHt: Number(site.marcheHt),
       tvaRate: site.tvaRate.toNumber(),
+      tauxRg: site.tauxRg.toNumber(),
+      avanceForfaitaire: Number(site.avanceForfaitaire),
       startDate: site.startDate,
       endDatePlanned: site.endDatePlanned,
       status: site.status,
@@ -213,6 +217,10 @@ export class SitesService {
     if (dto.marcheHt !== undefined) data.marcheHt = BigInt(dto.marcheHt);
     if (dto.tvaRate !== undefined)
       data.tvaRate = new Prisma.Decimal(dto.tvaRate);
+    if (dto.tauxRg !== undefined)
+      data.tauxRg = new Prisma.Decimal(dto.tauxRg);
+    if (dto.avanceForfaitaire !== undefined)
+      data.avanceForfaitaire = BigInt(Math.round(dto.avanceForfaitaire));
     if (dto.startDate !== undefined) data.startDate = new Date(dto.startDate);
     if (dto.endDatePlanned !== undefined)
       data.endDatePlanned = new Date(dto.endDatePlanned);

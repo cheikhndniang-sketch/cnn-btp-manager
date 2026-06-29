@@ -36,6 +36,19 @@ export class UpdateSiteDto {
   tvaRate?: number;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  tauxRg?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  avanceForfaitaire?: number;
+
+  @IsOptional()
   @IsDateString()
   startDate?: string;
 
