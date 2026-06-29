@@ -6,6 +6,7 @@ import { DashboardLayout } from '@/components/DashboardLayout';
 import { KpiCard } from '@/components/KpiCard';
 import { PlanningTab } from '@/components/PlanningTab';
 import { FinanceTab } from '@/components/FinanceTab';
+import { SousTraitanceTab } from '@/components/SousTraitanceTab';
 import { formatDate, formatFCFA } from '@/lib/format';
 import { ROLE_LABELS } from '@/api/types';
 
@@ -14,7 +15,7 @@ const TABS = [
   { key: 'planning', label: 'Planning', enabled: true },
   { key: 'rapports', label: 'Rapports', enabled: false },
   { key: 'finance', label: 'Finance', enabled: true },
-  { key: 'st', label: 'Sous-traitance', enabled: false },
+  { key: 'st', label: 'Sous-traitance', enabled: true },
   { key: 'docs', label: 'Documents', enabled: false },
 ] as const;
 
@@ -131,6 +132,8 @@ export function SiteDetailPage() {
               siteName={site.name}
               siteReference={site.reference}
             />
+          ) : tab === 'st' ? (
+            <SousTraitanceTab siteId={site.id} />
           ) : (
             <div className="card text-center py-16">
               <p className="text-slate-500">

@@ -78,9 +78,12 @@ model Site {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  members    SiteMember[]
-  lots       Lot[]
-  situations Situation[]
+  members       SiteMember[]
+  lots          Lot[]
+  situations    Situation[]
+  sousTraitants SousTraitant[]
+  contratsst    ContratST[]
+  situationsST  SituationST[]
 
   @@index([status])
 }
@@ -99,9 +102,10 @@ model Lot {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  site      Site             @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  tasks     Task[]
-  sitLignes SituationLigne[]
+  site       Site             @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  tasks      Task[]
+  sitLignes  SituationLigne[]
+  contratsst ContratST[]
 
   @@unique([siteId, code])
   @@index([siteId])
@@ -204,6 +208,82 @@ model SituationLigne {
   @@unique([situationId, lotId])
   @@index([situationId])
   @@index([lotId])
+}
+
+// ── Sous-traitance ────────────────────────────────────────────────────
+
+enum ContratSTStatus {
+  ACTIF
+  TERMINE
+  RESILIE
+}
+
+enum SituationSTStatus {
+  BROUILLON
+  VALIDEE
+  PAYEE
+}
+
+model SousTraitant {
+  id        String      @id @default(uuid())
+  siteId    String
+  nom       String
+  contact   String?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  site     Site        @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  contrats ContratST[]
+
+  @@index([siteId])
+}
+
+model ContratST {
+  id                String          @id @default(uuid())
+  siteId            String
+  sousTraitantId    String
+  lotId             String?
+  reference         String
+  intitule          String
+  montantHt         BigInt          @default(0)
+  tvaRate           Decimal         @default(0.18) @db.Decimal(5, 4)
+  tauxRg            Decimal         @default(0.05) @db.Decimal(5, 4)
+  avanceForfaitaire BigInt          @default(0)
+  status            ContratSTStatus @default(ACTIF)
+  startDate         DateTime?       @db.Date
+  endDate           DateTime?       @db.Date
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  site         Site          @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  sousTraitant SousTraitant  @relation(fields: [sousTraitantId], references: [id])
+  lot          Lot?          @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  situations   SituationST[]
+
+  @@index([siteId])
+  @@index([sousTraitantId])
+}
+
+model SituationST {
+  id               String            @id @default(uuid())
+  contratId        String
+  siteId           String
+  numero           Int
+  periode          String
+  dateEmission     DateTime          @db.Date
+  status           SituationSTStatus @default(BROUILLON)
+  montantHtPeriode BigInt            @default(0)
+  deductionAvance  BigInt            @default(0)
+  notes            String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  contrat ContratST @relation(fields: [contratId], references: [id], onDelete: Cascade)
+  site    Site      @relation(fields: [siteId], references: [id])
+
+  @@unique([contratId, numero])
+  @@index([contratId])
+  @@index([siteId])
 }
 
 model AuditLog {

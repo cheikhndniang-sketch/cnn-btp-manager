@@ -1,11 +1,13 @@
 import { api } from './client';
 import type {
+  ContratST,
   Lot,
   LoginResponse,
   Site,
   SiteKpi,
   SiteMember,
   Situation,
+  SousTraitant,
   Task,
   TaskStatus,
   User,
@@ -139,4 +141,66 @@ export const planningApi = {
     api
       .get(`/sites/${siteId}/planning/export.xml`, { responseType: 'blob' })
       .then((r) => r.data as Blob),
+};
+
+export interface CreateSousTraitantPayload { nom: string; contact?: string }
+export interface CreateContratSTPayload {
+  sousTraitantId: string;
+  lotId?: string;
+  reference: string;
+  intitule: string;
+  montantHt: number;
+  tvaRate?: number;
+  tauxRg?: number;
+  avanceForfaitaire?: number;
+  startDate?: string;
+  endDate?: string;
+}
+export interface UpdateContratSTPayload {
+  lotId?: string | null;
+  reference?: string;
+  intitule?: string;
+  montantHt?: number;
+  tvaRate?: number;
+  tauxRg?: number;
+  avanceForfaitaire?: number;
+  status?: string;
+  startDate?: string;
+  endDate?: string;
+}
+export interface CreateSituationSTPayload {
+  numero: number;
+  periode: string;
+  dateEmission: string;
+  montantHtPeriode?: number;
+  notes?: string;
+}
+export interface UpdateSituationSTPayload {
+  montantHtPeriode?: number;
+  deductionAvance?: number;
+  status?: string;
+  notes?: string;
+}
+
+export const sousTraitanceApi = {
+  list: (siteId: string) =>
+    api.get<SousTraitant[]>(`/sites/${siteId}/sous-traitance/sous-traitants`).then((r) => r.data),
+  createST: (siteId: string, payload: CreateSousTraitantPayload) =>
+    api.post<SousTraitant>(`/sites/${siteId}/sous-traitance/sous-traitants`, payload).then((r) => r.data),
+  updateST: (siteId: string, id: string, payload: Partial<CreateSousTraitantPayload>) =>
+    api.patch<SousTraitant>(`/sites/${siteId}/sous-traitance/sous-traitants/${id}`, payload).then((r) => r.data),
+  deleteST: (siteId: string, id: string) =>
+    api.delete(`/sites/${siteId}/sous-traitance/sous-traitants/${id}`).then((r) => r.data),
+  createContrat: (siteId: string, payload: CreateContratSTPayload) =>
+    api.post<ContratST>(`/sites/${siteId}/sous-traitance/contrats`, payload).then((r) => r.data),
+  updateContrat: (siteId: string, contratId: string, payload: UpdateContratSTPayload) =>
+    api.patch<ContratST>(`/sites/${siteId}/sous-traitance/contrats/${contratId}`, payload).then((r) => r.data),
+  deleteContrat: (siteId: string, contratId: string) =>
+    api.delete(`/sites/${siteId}/sous-traitance/contrats/${contratId}`).then((r) => r.data),
+  createSituationST: (siteId: string, contratId: string, payload: CreateSituationSTPayload) =>
+    api.post<ContratST>(`/sites/${siteId}/sous-traitance/contrats/${contratId}/situations`, payload).then((r) => r.data),
+  updateSituationST: (siteId: string, contratId: string, situationId: string, payload: UpdateSituationSTPayload) =>
+    api.patch<ContratST>(`/sites/${siteId}/sous-traitance/contrats/${contratId}/situations/${situationId}`, payload).then((r) => r.data),
+  deleteSituationST: (siteId: string, contratId: string, situationId: string) =>
+    api.delete(`/sites/${siteId}/sous-traitance/contrats/${contratId}/situations/${situationId}`).then((r) => r.data),
 };

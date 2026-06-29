@@ -151,6 +151,80 @@ export interface LoginResponse {
   user: User;
 }
 
+// ── Sous-traitance ────────────────────────────────────────────────────
+
+export type ContratSTStatus = 'ACTIF' | 'TERMINE' | 'RESILIE';
+export type SituationSTStatus = 'BROUILLON' | 'VALIDEE' | 'PAYEE';
+
+export const CONTRAT_ST_STATUS_LABELS: Record<ContratSTStatus, string> = {
+  ACTIF: 'Actif',
+  TERMINE: 'Terminé',
+  RESILIE: 'Résilié',
+};
+
+export const SITUATION_ST_STATUS_LABELS: Record<SituationSTStatus, string> = {
+  BROUILLON: 'Brouillon',
+  VALIDEE: 'Validée',
+  PAYEE: 'Payée',
+};
+
+export interface SituationST {
+  id: string;
+  contratId: string;
+  siteId: string;
+  numero: number;
+  periode: string;
+  dateEmission: string;
+  status: SituationSTStatus;
+  notes: string | null;
+  montantHtPeriode: number;
+  rgHt: number;
+  deductionAvance: number;
+  totalHtva: number;
+  tvaAmount: number;
+  totalTtc: number;
+  netAPayer: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ContratST {
+  id: string;
+  siteId: string;
+  sousTraitantId: string;
+  lotId: string | null;
+  lotCode: string | null;
+  lotName: string | null;
+  reference: string;
+  intitule: string;
+  montantHt: number;
+  tvaRate: number;
+  tauxRg: number;
+  avanceForfaitaire: number;
+  avanceRestante: number;
+  status: ContratSTStatus;
+  startDate: string | null;
+  endDate: string | null;
+  montantHtCumul: number;
+  pctAvancement: number;
+  totalRgRetenu: number;
+  totalPaye: number;
+  totalARecouvrer: number;
+  situations: SituationST[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SousTraitant {
+  id: string;
+  siteId: string;
+  nom: string;
+  contact: string | null;
+  contrats: ContratST[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const ROLE_LABELS: Record<Role, string> = {
   ADMIN: 'Administrateur',
   DIRECTEUR_PROJET: 'Directeur de projet',
