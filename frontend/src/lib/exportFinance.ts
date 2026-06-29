@@ -9,6 +9,22 @@ export interface ExportSite {
   reference: string;
 }
 
+export interface ExportSiteFinance extends ExportSite {
+  marcheHt: number;
+  avanceForfaitaire: number;
+  tvaRate: number;
+  tauxRg: number;
+}
+
+export interface FactureOptions {
+  destinataire: string;
+  destinatairePoste?: string;
+  factureNumero: string;
+  banque?: string;
+  nomClient?: string;
+  numeroCompte?: string;
+}
+
 /* ── Palette charte CSE ─────────────────────────────────────────────── */
 const NAVY: [number, number, number] = [0, 51, 102];
 const CYAN: [number, number, number] = [0, 174, 239];
@@ -255,4 +271,255 @@ export function exportSituationToPdf(site: ExportSite, s: Situation): void {
   doc.line(14, H - 10, W - 14, H - 10);
 
   doc.save(`Situation-${String(s.numero).padStart(2, '0')}-${site.reference}-${fileStamp()}.pdf`);
+}
+
+/* ── En-tête Facture de décompte ────────────────────────────────────── */
+function drawFactureHeader(doc: jsPDF, s: Situation, factureNumero: string) {
+  const W = doc.internal.pageSize.getWidth();
+
+  doc.setFillColor(...NAVY);
+  doc.rect(0, 0, W, 24, 'F');
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text('CSE IMMOBILIER', 14, 10);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.text('Direction des Travaux & Réalisations', 14, 16);
+  doc.text('Dakar, Sénégal', 14, 21);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.text('FACTURE DE DÉCOMPTE', W - 14, 11, { align: 'right' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.text(`N° ${factureNumero}`, W - 14, 17, { align: 'right' });
+  doc.text(`Période : ${s.periode}`, W - 14, 22, { align: 'right' });
+
+  doc.setFillColor(...CYAN);
+  doc.rect(0, 24, W, 1.5, 'F');
+}
+
+/* ── Export Facture de décompte ─────────────────────────────────────── */
+export function exportFactureToPdf(
+  site: ExportSiteFinance,
+  s: Situation,
+  prevTotalHt: number,
+  opts: FactureOptions,
+): void {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const W = doc.internal.pageSize.getWidth();
+  const H = doc.internal.pageSize.getHeight();
+
+  /* ── Calculs (logique facture : différentiel, RG sur HT, TVA sur net) */
+  const montantMarcheHt = site.marcheHt;
+  const avanceDemarrage = site.avanceForfaitaire;
+  const pctAvance =
+    montantMarcheHt > 0 ? Math.round((avanceDemarrage / montantMarcheHt) * 100) : 0;
+  const presentTotalHt = s.totalHt;
+  const pctPrecedent =
+    montantMarcheHt > 0 ? (prevTotalHt / montantMarcheHt) * 100 : 0;
+  const pctPresent =
+    montantMarcheHt > 0 ? (presentTotalHt / montantMarcheHt) * 100 : 0;
+  const montantTravauxHt = presentTotalHt - prevTotalHt;
+  const rgHt = Math.round(montantTravauxHt * site.tauxRg);
+  const remboursementAvance = s.deductionAvance;
+  const tauxRembAvance = montantTravauxHt > 0 ? remboursementAvance / montantTravauxHt : 0;
+  const totalHtva = montantTravauxHt - rgHt - remboursementAvance;
+  const tvaAmount = Math.round(totalHtva * site.tvaRate);
+  const totalTtc = totalHtva + tvaAmount;
+  const netAPayer = totalTtc;
+
+  /* ── En-tête ──────────────────────────────────────────────────────── */
+  drawFactureHeader(doc, s, opts.factureNumero);
+  let y = 30;
+
+  /* ── ATTENTION DE + date + n° facture ────────────────────────────── */
+  y += 6;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(...GREY);
+  doc.text('ATTENTION DE :', 14, y);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(...GREY);
+  doc.text(`Dakar, le ${todayFr()}`, W - 14, y, { align: 'right' });
+
+  y += 5;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(...NAVY);
+  doc.text(opts.destinataire, 14, y);
+  doc.setFontSize(9);
+  doc.text(`FACTURE : ${opts.factureNumero}`, W - 14, y, { align: 'right' });
+
+  if (opts.destinatairePoste) {
+    y += 5;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(...GREY);
+    doc.text(opts.destinatairePoste, 14, y);
+  }
+
+  y += 10;
+  doc.setDrawColor(200, 200, 200);
+  doc.setLineWidth(0.3);
+  doc.line(14, y, W - 14, y);
+  y += 7;
+
+  /* ── Projet / période ────────────────────────────────────────────── */
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(...NAVY);
+  doc.text('PROJET :', 14, y);
+  doc.setFont('helvetica', 'normal');
+  doc.text(site.name, 38, y);
+
+  y += 5;
+  doc.setFont('helvetica', 'bold');
+  doc.text('DÉCOMPTE :', 14, y);
+  doc.setFont('helvetica', 'normal');
+  const periodeLabel = new Intl.DateTimeFormat('fr-FR', {
+    year: 'numeric',
+    month: 'long',
+  }).format(new Date(`${s.periode}-01`)).toUpperCase();
+  doc.text(periodeLabel, 38, y);
+
+  y += 9;
+
+  /* ── En-tête du tableau ──────────────────────────────────────────── */
+  doc.setFillColor(...NAVY);
+  doc.rect(14, y, W - 28, 8, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.text('DESCRIPTION', 18, y + 5.5);
+  doc.text('MONTANTS (FCFA)', W - 18, y + 5.5, { align: 'right' });
+  y += 11;
+
+  /* ── Ligne de tableau ────────────────────────────────────────────── */
+  const tRow = (
+    label: string,
+    amount: number | null,
+    options?: { bold?: boolean; shaded?: boolean; pct?: string; coeff?: string },
+  ) => {
+    const isBold = options?.bold ?? false;
+    if (options?.shaded) {
+      doc.setFillColor(...LIGHT);
+      doc.rect(14, y - 4, W - 28, 6.5, 'F');
+    }
+    doc.setFont('helvetica', isBold ? 'bold' : 'normal');
+    doc.setFontSize(isBold ? 10 : 9);
+    doc.setTextColor(...NAVY);
+    doc.text(label, 18, y);
+    if (amount !== null) {
+      doc.text(formatFCFA(amount), W - 18, y, { align: 'right' });
+    }
+    if (options?.pct) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(...GREY);
+      doc.text(options.pct, W - 52, y, { align: 'right' });
+    }
+    if (options?.coeff) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(...GREY);
+      doc.text(options.coeff, W - 52, y, { align: 'right' });
+    }
+    y += isBold ? 7 : 6.5;
+  };
+
+  const tSep = () => {
+    doc.setDrawColor(210, 210, 210);
+    doc.setLineWidth(0.2);
+    doc.line(14, y - 0.5, W - 14, y - 0.5);
+    y += 3;
+  };
+
+  tRow('MONTANT TOTAL DU MARCHÉ HTVA (EN FCFA)', montantMarcheHt, { shaded: true });
+  tRow(
+    `AVANCE DE DÉMARRAGE${pctAvance > 0 ? ` ${pctAvance} %` : ''} HTVA (EN FCFA)`,
+    avanceDemarrage,
+  );
+  tSep();
+  tRow('TOTAL DÉCOMPTE PRÉCÉDENT', prevTotalHt, {
+    shaded: true,
+    pct: `${pctPrecedent.toFixed(1)} %`,
+  });
+  tRow('TOTAL PRÉSENT DÉCOMPTE', presentTotalHt, { pct: `${pctPresent.toFixed(1)} %` });
+  tRow('MONTANT DES TRAVAUX DU PRÉSENT DÉCOMPTE', montantTravauxHt, { bold: true, shaded: true });
+  tRow(`RETENUE DE GARANTIE (${(site.tauxRg * 100).toFixed(0)} %)`, rgHt);
+  tRow('REMBOURSEMENT AVANCE DE DÉMARRAGE', remboursementAvance, {
+    coeff: tauxRembAvance > 0 ? tauxRembAvance.toFixed(4) : undefined,
+  });
+  tSep();
+  tRow('TOTAL HTVA (EN FCFA)', totalHtva, { bold: true, shaded: true });
+  tRow(`TVA ${(site.tvaRate * 100).toFixed(0)} %`, tvaAmount);
+  tRow('TOTAL TTC', totalTtc, { bold: true });
+
+  y += 2;
+  doc.setDrawColor(...NAVY);
+  doc.setLineWidth(0.8);
+  doc.line(14, y, W - 14, y);
+  y += 8;
+
+  /* ── NET À PAYER en lettres ──────────────────────────────────────── */
+  const lettres = montantEnLettresMaj(netAPayer);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(...NAVY);
+  const netText = `NET À PAYER : ${lettres} TTC`;
+  const wrapped = doc.splitTextToSize(netText, W - 28);
+  doc.text(wrapped, 14, y);
+  y += (wrapped as string[]).length * 6 + 12;
+
+  /* ── Signature ───────────────────────────────────────────────────── */
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(9);
+  doc.setTextColor(...NAVY);
+  doc.text('Le Mandataire du Groupement', W - 14, y, { align: 'right' });
+  y += 24;
+
+  /* ── Coordonnées bancaires ───────────────────────────────────────── */
+  if (opts.banque ?? opts.nomClient ?? opts.numeroCompte) {
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.3);
+    doc.line(14, y, W - 14, y);
+    y += 8;
+
+    const bankLine = (key: string, val: string, xVal: number) => {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(...NAVY);
+      doc.text(`${key} :`, 14, y);
+      doc.setFont('helvetica', 'normal');
+      doc.text(val, xVal, y);
+      y += 6;
+    };
+
+    if (opts.banque) bankLine('BANQUE', opts.banque, 32);
+    if (opts.nomClient) bankLine('NOM DU CLIENT', opts.nomClient, 54);
+    if (opts.numeroCompte) bankLine('NUMÉRO DE COMPTE', opts.numeroCompte, 64);
+  }
+
+  /* ── Pied de page ────────────────────────────────────────────────── */
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(...GREY);
+  doc.text(
+    `CSE Immobilier — ${site.name} — Facture ${opts.factureNumero} — Imprimé le ${todayFr()}`,
+    W / 2,
+    H - 6,
+    { align: 'center' },
+  );
+  doc.setDrawColor(...CYAN);
+  doc.setLineWidth(0.5);
+  doc.line(14, H - 10, W - 14, H - 10);
+
+  doc.save(
+    `Facture-${opts.factureNumero.replace(/\//g, '-')}-${site.reference}-${fileStamp()}.pdf`,
+  );
 }

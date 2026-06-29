@@ -256,12 +256,17 @@ export function FinanceTab({
         </div>
       ) : (
         <div className="space-y-3">
-          {situations?.map((s) => (
+          {[...(situations ?? [])].sort((a, b) => a.numero - b.numero).map((s, idx, arr) => (
             <SituationCard
               key={s.id}
               siteId={siteId}
               siteName={siteName}
               siteReference={siteReference}
+              siteMarcheHt={site.marcheHt}
+              siteAvanceForfaitaire={site.avanceForfaitaire}
+              siteTvaRate={site.tvaRate}
+              siteTauxRg={site.tauxRg}
+              prevTotalHt={idx > 0 ? arr[idx - 1].totalHt : 0}
               situation={s}
               open={openId === s.id}
               onToggle={() => setOpenId((v) => (v === s.id ? null : s.id))}
@@ -359,12 +364,19 @@ function CreateSituationForm({ siteId, nextNumero, onSuccess }: {
 
 /* ── Carte Situation ───────────────────────────────────────────────────── */
 function SituationCard({
-  siteId, siteName, siteReference, situation: s, open, onToggle, canWrite, onChange,
+  siteId, siteName, siteReference,
+  siteMarcheHt, siteAvanceForfaitaire, siteTvaRate, siteTauxRg,
+  prevTotalHt,
+  situation: s, open, onToggle, canWrite, onChange,
 }: {
   siteId: string; siteName: string; siteReference: string;
+  siteMarcheHt: number; siteAvanceForfaitaire: number;
+  siteTvaRate: number; siteTauxRg: number;
+  prevTotalHt: number;
   situation: Situation; open: boolean; onToggle: () => void;
   canWrite: boolean; onChange: () => void;
 }) {
+  const [showFacture, setShowFacture] = useState(false);
   const queryClient = useQueryClient();
 
   const updateStatus = useMutation({
@@ -432,10 +444,32 @@ function SituationCard({
               m.exportSituationToPdf({ name: siteName, reference: siteReference }, s);
             }}
           >
-            PDF
+            PDF Situation
           </button>
+          {(s.status === 'VALIDEE' || s.status === 'PAYEE') && (
+            <button
+              className="btn-secondary text-xs"
+              onClick={() => setShowFacture(true)}
+            >
+              Facture PDF
+            </button>
+          )}
         </div>
       </div>
+
+      {showFacture && (
+        <FactureDialog
+          situation={s}
+          siteName={siteName}
+          siteReference={siteReference}
+          siteMarcheHt={siteMarcheHt}
+          siteAvanceForfaitaire={siteAvanceForfaitaire}
+          siteTvaRate={siteTvaRate}
+          siteTauxRg={siteTauxRg}
+          prevTotalHt={prevTotalHt}
+          onClose={() => setShowFacture(false)}
+        />
+      )}
 
       {open && (
         <div className="mt-4 space-y-4">
@@ -534,6 +568,114 @@ function DeductionInput({ value, onSave }: { value: number; onSave: (v: number) 
         onChange={(e) => setV(Number(e.target.value))}
         onBlur={() => { if (v !== value) onSave(v); }}
       />
+    </div>
+  );
+}
+
+/* ── Dialog génération de facture ──────────────────────────────────────── */
+function FactureDialog({
+  situation: s, siteName, siteReference,
+  siteMarcheHt, siteAvanceForfaitaire, siteTvaRate, siteTauxRg,
+  prevTotalHt, onClose,
+}: {
+  situation: Situation; siteName: string; siteReference: string;
+  siteMarcheHt: number; siteAvanceForfaitaire: number;
+  siteTvaRate: number; siteTauxRg: number;
+  prevTotalHt: number; onClose: () => void;
+}) {
+  const [destinataire, setDestinataire] = useState('');
+  const [destinatairePoste, setDestinatairePoste] = useState('');
+  const [factureNumero, setFactureNumero] = useState(
+    `F-${String(s.numero).padStart(2, '0')}-${new Date().getFullYear()}`,
+  );
+  const [banque, setBanque] = useState('');
+  const [nomClient, setNomClient] = useState('GROUPEMENT CSE CDE');
+  const [numeroCompte, setNumeroCompte] = useState('');
+
+  const handleGenerate = async () => {
+    const m = await import('@/lib/exportFinance');
+    m.exportFactureToPdf(
+      {
+        name: siteName,
+        reference: siteReference,
+        marcheHt: siteMarcheHt,
+        avanceForfaitaire: siteAvanceForfaitaire,
+        tvaRate: siteTvaRate,
+        tauxRg: siteTauxRg,
+      },
+      s,
+      prevTotalHt,
+      {
+        destinataire: destinataire || '—',
+        destinatairePoste: destinatairePoste || undefined,
+        factureNumero,
+        banque: banque || undefined,
+        nomClient: nomClient || undefined,
+        numeroCompte: numeroCompte || undefined,
+      },
+    );
+    onClose();
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-surface-2 rounded-xl border border-slate-200 shadow-xl w-full max-w-md mx-4 p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-navy">Générer la facture de décompte</h3>
+          <button className="text-slate-400 hover:text-navy text-lg leading-none" onClick={onClose}>✕</button>
+        </div>
+
+        <div className="text-xs text-slate-500 bg-surface-1 rounded-lg px-3 py-2">
+          Situation n°{s.numero} · Période {s.periode}
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">Numéro de facture</label>
+            <input className="input w-full" value={factureNumero} onChange={(e) => setFactureNumero(e.target.value)} />
+          </div>
+          <div className="grid grid-cols-1 gap-3">
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Attention de (destinataire)</label>
+              <input className="input w-full" placeholder="Ex : M. ALIOUNE NDOYE" value={destinataire}
+                onChange={(e) => setDestinataire(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Poste / fonction</label>
+              <input className="input w-full" placeholder="Ex : MAIRE DE DAKAR PLATEAU" value={destinatairePoste}
+                onChange={(e) => setDestinatairePoste(e.target.value)} />
+            </div>
+          </div>
+          <div className="border-t border-slate-100 pt-3 space-y-3">
+            <p className="text-xs text-slate-400 uppercase tracking-wide">Coordonnées bancaires</p>
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Banque</label>
+              <input className="input w-full" placeholder="Ex : BRIDGE BANK" value={banque}
+                onChange={(e) => setBanque(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Nom du client</label>
+              <input className="input w-full" value={nomClient}
+                onChange={(e) => setNomClient(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Numéro de compte</label>
+              <input className="input w-full" placeholder="Ex : 01003 200000019037 08" value={numeroCompte}
+                onChange={(e) => setNumeroCompte(e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-2 justify-end pt-2">
+          <button className="btn-secondary text-sm" onClick={onClose}>Annuler</button>
+          <button className="btn-primary text-sm" onClick={() => void handleGenerate()}>
+            Générer le PDF
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
