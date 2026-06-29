@@ -46,6 +46,7 @@ model User {
   siteMembers   SiteMember[]
   auditLogs     AuditLog[]
   refreshTokens RefreshToken[]
+  documents     Document[]
 
   @@index([username])
 }
@@ -84,6 +85,7 @@ model Site {
   sousTraitants SousTraitant[]
   contratsst    ContratST[]
   situationsST  SituationST[]
+  documents     Document[]
 
   @@index([status])
 }
@@ -208,6 +210,40 @@ model SituationLigne {
   @@unique([situationId, lotId])
   @@index([situationId])
   @@index([lotId])
+}
+
+// ── Documents ─────────────────────────────────────────────────────────
+
+enum DocCategorie {
+  PV
+  COMPTE_RENDU
+  ATTACHEMENT
+  FACTURE
+  PLAN
+  PHOTO
+  CONTRAT
+  COURRIER
+  AUTRE
+}
+
+model Document {
+  id          String       @id @default(uuid())
+  siteId      String
+  uploadedBy  String
+  nom         String
+  categorie   DocCategorie @default(AUTRE)
+  mimetype    String
+  taille      Int
+  contenu     Bytes
+  description String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [uploadedBy], references: [id])
+
+  @@index([siteId, categorie])
+  @@index([siteId, createdAt])
 }
 
 // ── Sous-traitance ────────────────────────────────────────────────────

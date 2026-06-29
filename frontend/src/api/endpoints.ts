@@ -1,6 +1,8 @@
 import { api } from './client';
 import type {
   ContratST,
+  DocCategorie,
+  Document,
   Lot,
   LoginResponse,
   Site,
@@ -203,4 +205,28 @@ export const sousTraitanceApi = {
     api.patch<ContratST>(`/sites/${siteId}/sous-traitance/contrats/${contratId}/situations/${situationId}`, payload).then((r) => r.data),
   deleteSituationST: (siteId: string, contratId: string, situationId: string) =>
     api.delete(`/sites/${siteId}/sous-traitance/contrats/${contratId}/situations/${situationId}`).then((r) => r.data),
+};
+
+export const documentsApi = {
+  list: (siteId: string, categorie?: DocCategorie) =>
+    api
+      .get<Document[]>(`/sites/${siteId}/documents`, { params: categorie ? { categorie } : undefined })
+      .then((r) => r.data),
+  upload: (siteId: string, formData: FormData) =>
+    api.post<Document>(`/sites/${siteId}/documents`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then((r) => r.data),
+  download: async (siteId: string, docId: string, nom: string) => {
+    const res = await api.get(`/sites/${siteId}/documents/${docId}/download`, {
+      responseType: 'blob',
+    });
+    const url = URL.createObjectURL(res.data as Blob);
+    const a = globalThis.document.createElement('a');
+    a.href = url;
+    a.download = nom;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+  remove: (siteId: string, docId: string) =>
+    api.delete(`/sites/${siteId}/documents/${docId}`).then((r) => r.data),
 };

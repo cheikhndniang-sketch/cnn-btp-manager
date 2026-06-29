@@ -9,6 +9,7 @@ import { SitesModule } from './modules/sites/sites.module';
 import { PlanningModule } from './modules/planning/planning.module';
 import { FinanceModule } from './modules/finance/finance.module';
 import { SousTraitanceModule } from './modules/sous-traitance/sous-traitance.module';
+import { DocumentsModule } from './modules/documents/documents.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -30,6 +31,7 @@ import { HealthController } from './health.controller';
     PlanningModule,
     FinanceModule,
     SousTraitanceModule,
+    DocumentsModule,
   ],
   controllers: [HealthController],
   providers: [

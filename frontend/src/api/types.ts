@@ -231,3 +231,42 @@ export const ROLE_LABELS: Record<Role, string> = {
   DIRECTEUR_TRAVAUX: 'Directeur de travaux',
   CONDUCTEUR_TRAVAUX: 'Conducteur de travaux',
 };
+
+// ── Documents ─────────────────────────────────────────────────────────
+
+export type DocCategorie =
+  | 'PV'
+  | 'COMPTE_RENDU'
+  | 'ATTACHEMENT'
+  | 'FACTURE'
+  | 'PLAN'
+  | 'PHOTO'
+  | 'CONTRAT'
+  | 'COURRIER'
+  | 'AUTRE';
+
+export const DOC_CATEGORIE_LABELS: Record<DocCategorie, string> = {
+  PV: 'PV',
+  COMPTE_RENDU: 'Compte-rendu',
+  ATTACHEMENT: 'Attachement',
+  FACTURE: 'Facture',
+  PLAN: 'Plan',
+  PHOTO: 'Photo',
+  CONTRAT: 'Contrat',
+  COURRIER: 'Courrier',
+  AUTRE: 'Autre',
+};
+
+export interface Document {
+  id: string;
+  siteId: string;
+  uploadedBy: string;
+  nom: string;
+  categorie: DocCategorie;
+  mimetype: string;
+  taille: number;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+  user: { name: string };
+}
