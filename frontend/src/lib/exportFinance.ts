@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { Situation } from '@/api/types';
 import { formatFCFA } from './format';
+import { montantEnLettresMaj } from './nombreEnLettres';
 
 export interface ExportSite {
   name: string;
@@ -135,6 +136,24 @@ function drawRecap(doc: jsPDF, s: Situation, startY: number) {
   doc.setFontSize(11);
   doc.text('NET À PAYER', left, y + 3);
   doc.text(formatFCFA(s.netAPayer), left + colW, y + 3, { align: 'right' });
+
+  /* Somme arrêtée en lettres */
+  const lettres = montantEnLettresMaj(s.netAPayer);
+  const fullW = doc.internal.pageSize.getWidth();
+  const arreteeY = y + 16;
+  doc.setFillColor(244, 243, 238);
+  doc.rect(14, arreteeY - 5, fullW - 28, 14, 'F');
+  doc.setDrawColor(...NAVY);
+  doc.setLineWidth(0.4);
+  doc.rect(14, arreteeY - 5, fullW - 28, 14, 'S');
+  doc.setTextColor(...NAVY);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.text('Arrêtée à la somme de :', 18, arreteeY + 1);
+  doc.setFontSize(10);
+  const maxW = fullW - 28 - 8;
+  const wrapped = doc.splitTextToSize(lettres, maxW);
+  doc.text(wrapped, 18, arreteeY + 7);
 }
 
 /* ── Bloc signatures ─────────────────────────────────────────────────── */

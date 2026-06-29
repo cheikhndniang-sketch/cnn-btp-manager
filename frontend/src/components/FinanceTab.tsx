@@ -10,6 +10,7 @@ import {
   type SituationStatus,
 } from '@/api/types';
 import { formatFCFA } from '@/lib/format';
+import { montantEnLettres } from '@/lib/nombreEnLettres';
 
 const ROLE_LEVEL: Record<Role, number> = {
   ADMIN: 4,
@@ -498,6 +499,12 @@ function SituationCard({
             <div className="border-t-2 border-navy pt-2 mt-1 flex justify-between font-bold text-navy text-base">
               <span>NET À PAYER</span>
               <span>{formatFCFA(s.netAPayer)}</span>
+            </div>
+            <div className="mt-2 rounded border border-navy/20 bg-surface-1 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">Arrêtée à la somme de :</p>
+              <p className="text-xs font-bold text-navy uppercase leading-snug">
+                {montantEnLettres(s.netAPayer).toUpperCase()}
+              </p>
             </div>
           </div>
         </div>
