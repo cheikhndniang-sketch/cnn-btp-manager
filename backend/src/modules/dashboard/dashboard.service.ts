@@ -1,0 +1,149 @@
+import { Injectable } from '@nestjs/common';
+import { Prisma, Role } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
+
+type Actor = { userId: string; role: Role };
+
+@Injectable()
+export class DashboardService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  private siteFilter(actor: Actor): Prisma.SiteWhereInput {
+    const global = actor.role === Role.ADMIN || actor.role === Role.DIRECTEUR_PROJET;
+    return global ? {} : { members: { some: { userId: actor.userId } } };
+  }
+
+  async getFinanceGlobal(actor: Actor) {
+    const sites = await this.prisma.site.findMany({
+      where: this.siteFilter(actor),
+      select: {
+        id: true,
+        name: true,
+        reference: true,
+        status: true,
+        marcheHt: true,
+        tvaRate: true,
+        tauxRg: true,
+        avanceForfaitaire: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (sites.length === 0) {
+      return {
+        totalBudgetHt: 0,
+        totalHtCumul: 0,
+        pctEngagement: 0,
+        totalRgRetenu: 0,
+        totalNetEnAttente: 0,
+        totalTsApprouveHt: 0,
+        totalSituationsBrouillon: 0,
+        parSite: [],
+      };
+    }
+
+    const siteIds = sites.map((s) => s.id);
+
+    const [situations, tsGroups] = await Promise.all([
+      this.prisma.situation.findMany({
+        where: { siteId: { in: siteIds } },
+        include: {
+          lignes: {
+            include: { lot: { select: { montantMarcheHt: true } } },
+          },
+        },
+        orderBy: { numero: 'desc' },
+      }),
+      this.prisma.travauxSupp.groupBy({
+        by: ['siteId'],
+        where: { siteId: { in: siteIds }, status: { not: 'BROUILLON' } },
+        _sum: { montantHt: true },
+      }),
+    ]);
+
+    const tsBySite = new Map(
+      tsGroups.map((g) => [g.siteId, Number(g._sum.montantHt ?? 0)]),
+    );
+
+    const parSite = sites.map((site) => {
+      const all = situations.filter((s) => s.siteId === site.id);
+      const validated = all.filter((s) => s.status === 'VALIDEE' || s.status === 'PAYEE');
+      const brouillonCount = all.filter((s) => s.status === 'BROUILLON').length;
+      const latestSit = validated[0] ?? null;
+
+      const tvaRate = site.tvaRate.toNumber();
+      const tauxRg = site.tauxRg.toNumber();
+      const marcheHt = Number(site.marcheHt);
+
+      let htCumul = 0;
+      let montantRg = 0;
+      let deductionAvance = 0;
+      let netAPayer = 0;
+      let totalTtc = 0;
+      let lastNum: number | null = null;
+      let lastPeriode: string | null = null;
+      let lastStatus: string | null = null;
+
+      if (latestSit) {
+        htCumul = +(
+          latestSit.lignes.reduce(
+            (sum, l) =>
+              sum + Number(l.avancementCumul) * Number(l.lot.montantMarcheHt),
+            0,
+          ) / 100
+        ).toFixed(2);
+        const totalTva = htCumul * tvaRate;
+        totalTtc = htCumul + totalTva;
+        montantRg = totalTtc * tauxRg;
+        deductionAvance = Number(latestSit.deductionAvance);
+        netAPayer = Math.max(0, totalTtc - montantRg - deductionAvance);
+        lastNum = latestSit.numero;
+        lastPeriode = latestSit.periode;
+        lastStatus = latestSit.status;
+      }
+
+      const tsHt = tsBySite.get(site.id) ?? 0;
+
+      return {
+        siteId: site.id,
+        siteName: site.name,
+        siteReference: site.reference,
+        siteStatus: site.status,
+        marcheHt,
+        tvaRate,
+        tauxRg,
+        htCumul,
+        pctAvancement: marcheHt > 0 ? +((htCumul / marcheHt) * 100).toFixed(1) : 0,
+        montantRg,
+        netAPayer,
+        totalTtc,
+        lastSituationNumero: lastNum,
+        lastSituationPeriode: lastPeriode,
+        lastSituationStatus: lastStatus,
+        situationsBrouillon: brouillonCount,
+        tsApprouveHt: tsHt,
+      };
+    });
+
+    const totalBudgetHt = parSite.reduce((a, s) => a + s.marcheHt, 0);
+    const totalHtCumul = parSite.reduce((a, s) => a + s.htCumul, 0);
+    const totalRgRetenu = parSite.reduce((a, s) => a + s.montantRg, 0);
+    const totalNetEnAttente = parSite
+      .filter((s) => s.lastSituationStatus === 'VALIDEE')
+      .reduce((a, s) => a + s.netAPayer, 0);
+    const totalTsHt = parSite.reduce((a, s) => a + s.tsApprouveHt, 0);
+    const totalBrouillon = parSite.reduce((a, s) => a + s.situationsBrouillon, 0);
+
+    return {
+      totalBudgetHt,
+      totalHtCumul,
+      pctEngagement:
+        totalBudgetHt > 0 ? +((totalHtCumul / totalBudgetHt) * 100).toFixed(1) : 0,
+      totalRgRetenu,
+      totalNetEnAttente,
+      totalTsApprouveHt: totalTsHt,
+      totalSituationsBrouillon: totalBrouillon,
+      parSite,
+    };
+  }
+}

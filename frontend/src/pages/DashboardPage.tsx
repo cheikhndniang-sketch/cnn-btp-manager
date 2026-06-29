@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { sitesApi } from '@/api/endpoints';
+import { sitesApi, dashboardApi } from '@/api/endpoints';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { KpiCard } from '@/components/KpiCard';
 import { CreateSiteModal } from '@/components/CreateSiteModal';
@@ -21,15 +21,24 @@ const STATUS_LABELS: Record<Site['status'], string> = {
   COMPLETED: 'Terminé',
 };
 
+type DashTab = 'avancement' | 'finance';
+
 export function DashboardPage() {
   const { user } = useAuth();
   const [showCreate, setShowCreate] = useState(false);
   const [statusFilter, setStatusFilter] = useState<Site['status'] | 'ALL'>('ALL');
+  const [dashTab, setDashTab] = useState<DashTab>('avancement');
   const canCreate = user?.role === 'ADMIN' || user?.role === 'DIRECTEUR_PROJET';
 
   const { data: sites = [], isLoading } = useQuery({
     queryKey: ['sites'],
     queryFn: sitesApi.list,
+  });
+
+  const financeQuery = useQuery({
+    queryKey: ['dashboard', 'finance'],
+    queryFn: dashboardApi.financeGlobal,
+    enabled: dashTab === 'finance',
   });
 
   const activeSites = sites.filter((s) => s.status === 'ACTIVE');
@@ -66,6 +75,27 @@ export function DashboardPage() {
 
       {showCreate && <CreateSiteModal onClose={() => setShowCreate(false)} />}
 
+      {/* Tab bar */}
+      <div className="border-b border-slate-200 mb-6 flex gap-1">
+        {(['avancement', 'finance'] as DashTab[]).map((t) => (
+          <button
+            key={t}
+            onClick={() => setDashTab(t)}
+            className={`px-4 py-2 text-sm whitespace-nowrap border-b-2 -mb-px transition-colors capitalize ${
+              dashTab === t
+                ? 'border-cyan text-cyan-dark font-medium'
+                : 'border-transparent text-slate-600 hover:text-navy'
+            }`}
+          >
+            {t === 'avancement' ? 'Avancement' : 'Finance globale'}
+          </button>
+        ))}
+      </div>
+
+      {dashTab === 'finance' ? (
+        <FinanceGlobalTab financeQuery={financeQuery} />
+      ) : (
+        <>
       {/* KPI row */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
         <KpiCard label="Chantiers actifs" value={activeSites.length} accent="cyan" />
@@ -324,6 +354,198 @@ export function DashboardPage() {
           Budget HT total tous chantiers : {formatFCFA(sites.reduce((acc, s) => acc + s.marcheHt, 0))}
         </div>
       )}
+        </>
+      )}
     </DashboardLayout>
+  );
+}
+
+/* ── Finance globale tab ──────────────────────────────────────────────── */
+
+const SIT_STATUS_BADGE: Record<string, string> = {
+  BROUILLON: 'bg-slate-100 text-slate-500',
+  VALIDEE: 'bg-cyan/10 text-cyan-dark',
+  PAYEE: 'bg-green-light text-green',
+};
+
+const SIT_STATUS_LABELS: Record<string, string> = {
+  BROUILLON: 'Brouillon',
+  VALIDEE: 'Validée',
+  PAYEE: 'Payée',
+};
+
+function FinanceGlobalTab({
+  financeQuery,
+}: {
+  financeQuery: UseQueryResult<import('@/api/types').FinanceGlobal>;
+}) {
+  if (financeQuery.isLoading) {
+    return <p className="text-sm text-slate-500 py-16 text-center">Chargement…</p>;
+  }
+  if (financeQuery.isError || !financeQuery.data) {
+    return <p className="text-sm text-red py-8 text-center">Erreur de chargement.</p>;
+  }
+
+  const d = financeQuery.data;
+
+  return (
+    <div className="space-y-5">
+      {/* Global KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+        <FKpi label="Budget HT total" value={formatFCFA(d.totalBudgetHt)} accent="navy" />
+        <FKpi
+          label="HT facturé cumulé"
+          value={formatFCFA(d.totalHtCumul)}
+          sub={`${d.pctEngagement} % engagé`}
+          accent="cyan"
+        />
+        <FKpi label="RG total retenu" value={formatFCFA(d.totalRgRetenu)} accent="orange" />
+        <FKpi
+          label="Net en attente (validé)"
+          value={formatFCFA(d.totalNetEnAttente)}
+          accent="green"
+        />
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <FKpi label="TS approuvés HT" value={formatFCFA(d.totalTsApprouveHt)} />
+        <FKpi
+          label="Situations brouillon"
+          value={String(d.totalSituationsBrouillon)}
+          accent={d.totalSituationsBrouillon > 0 ? 'orange' : 'navy'}
+          sub={d.totalSituationsBrouillon > 0 ? 'À valider' : 'Aucune en attente'}
+        />
+        <FKpi
+          label="Taux d'engagement"
+          value={`${d.pctEngagement} %`}
+          accent={d.pctEngagement >= 80 ? 'green' : 'cyan'}
+        />
+      </div>
+
+      {/* Alert: brouillons */}
+      {d.totalSituationsBrouillon > 0 && (
+        <div className="rounded-lg bg-yellow-50 border border-yellow-200 px-4 py-3">
+          <p className="text-sm font-medium text-yellow-800">
+            {d.totalSituationsBrouillon} situation{d.totalSituationsBrouillon > 1 ? 's' : ''} en brouillon — à valider
+          </p>
+          <div className="flex flex-wrap gap-2 mt-1">
+            {d.parSite
+              .filter((s) => s.situationsBrouillon > 0)
+              .map((s) => (
+                <Link
+                  key={s.siteId}
+                  to={`/sites/${s.siteId}`}
+                  className="text-xs bg-white border border-yellow-300 text-yellow-800 px-2 py-0.5 rounded-full hover:bg-yellow-50"
+                >
+                  {s.siteName} ({s.situationsBrouillon})
+                </Link>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* Per-site breakdown table */}
+      <div className="card p-0 overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
+          <h2 className="font-semibold text-navy text-sm">Détail par chantier</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 text-left bg-white">
+                <th className="px-4 py-3 font-medium text-slate-500">Chantier</th>
+                <th className="px-4 py-3 font-medium text-slate-500 text-right">Marché HT</th>
+                <th className="px-4 py-3 font-medium text-slate-500 text-right">HT Cumulé</th>
+                <th className="px-4 py-3 font-medium text-slate-500 text-right">%</th>
+                <th className="px-4 py-3 font-medium text-slate-500 text-right">RG Retenu</th>
+                <th className="px-4 py-3 font-medium text-slate-500 text-right">Net à Payer</th>
+                <th className="px-4 py-3 font-medium text-slate-500 text-right">TS HT</th>
+                <th className="px-4 py-3 font-medium text-slate-500">Dernière Sit.</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {d.parSite.map((s) => (
+                <tr key={s.siteId} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3">
+                    <Link
+                      to={`/sites/${s.siteId}`}
+                      className="font-medium text-navy hover:underline"
+                    >
+                      {s.siteName}
+                    </Link>
+                    <div className="text-xs text-slate-400">{s.siteReference}</div>
+                  </td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">{formatFCFA(s.marcheHt)}</td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">{formatFCFA(s.htCumul)}</td>
+                  <td className="px-4 py-3 text-right">
+                    <span className={`font-medium ${s.pctAvancement >= 75 ? 'text-green' : s.pctAvancement >= 40 ? 'text-cyan-dark' : 'text-slate-600'}`}>
+                      {s.pctAvancement} %
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap text-slate-600">{formatFCFA(s.montantRg)}</td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap font-medium text-navy">{formatFCFA(s.netAPayer)}</td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap text-slate-600">
+                    {s.tsApprouveHt > 0 ? formatFCFA(s.tsApprouveHt) : '—'}
+                  </td>
+                  <td className="px-4 py-3">
+                    {s.lastSituationNumero ? (
+                      <div>
+                        <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${SIT_STATUS_BADGE[s.lastSituationStatus ?? ''] ?? ''}`}>
+                          {SIT_STATUS_LABELS[s.lastSituationStatus ?? ''] ?? s.lastSituationStatus}
+                        </span>
+                        <div className="text-xs text-slate-400 mt-0.5">
+                          N°{s.lastSituationNumero} · {s.lastSituationPeriode}
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-slate-400">Aucune</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold">
+                <td className="px-4 py-3 text-slate-700">TOTAL</td>
+                <td className="px-4 py-3 text-right text-navy whitespace-nowrap">{formatFCFA(d.totalBudgetHt)}</td>
+                <td className="px-4 py-3 text-right text-navy whitespace-nowrap">{formatFCFA(d.totalHtCumul)}</td>
+                <td className="px-4 py-3 text-right text-navy">{d.pctEngagement} %</td>
+                <td className="px-4 py-3 text-right text-navy whitespace-nowrap">{formatFCFA(d.totalRgRetenu)}</td>
+                <td className="px-4 py-3 text-right text-navy whitespace-nowrap">{formatFCFA(d.totalNetEnAttente)}</td>
+                <td className="px-4 py-3 text-right text-navy whitespace-nowrap">{formatFCFA(d.totalTsApprouveHt)}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FKpi({
+  label,
+  value,
+  sub,
+  accent,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  accent?: 'navy' | 'cyan' | 'green' | 'orange' | 'red';
+}) {
+  const colors: Record<string, string> = {
+    navy: 'text-navy',
+    cyan: 'text-cyan-dark',
+    green: 'text-green',
+    orange: 'text-orange',
+    red: 'text-red',
+  };
+  return (
+    <div className="kpi-card">
+      <span className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</span>
+      <span className={`text-xl font-bold ${colors[accent ?? 'navy'] ?? 'text-navy'}`}>{value}</span>
+      {sub && <span className="text-xs text-slate-400">{sub}</span>}
+    </div>
   );
 }

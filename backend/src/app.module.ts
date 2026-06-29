@@ -11,6 +11,7 @@ import { FinanceModule } from './modules/finance/finance.module';
 import { SousTraitanceModule } from './modules/sous-traitance/sous-traitance.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { TravauxSuppModule } from './modules/travaux-supp/travaux-supp.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -34,6 +35,7 @@ import { HealthController } from './health.controller';
     SousTraitanceModule,
     DocumentsModule,
     TravauxSuppModule,
+    DashboardModule,
   ],
   controllers: [HealthController],
   providers: [

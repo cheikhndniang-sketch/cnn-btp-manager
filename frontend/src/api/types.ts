@@ -232,6 +232,39 @@ export const ROLE_LABELS: Record<Role, string> = {
   CONDUCTEUR_TRAVAUX: 'Conducteur de travaux',
 };
 
+// ── Dashboard financier global ────────────────────────────────────────
+
+export interface SiteFinanceRow {
+  siteId: string;
+  siteName: string;
+  siteReference: string;
+  siteStatus: SiteStatus;
+  marcheHt: number;
+  tvaRate: number;
+  tauxRg: number;
+  htCumul: number;
+  pctAvancement: number;
+  montantRg: number;
+  netAPayer: number;
+  totalTtc: number;
+  lastSituationNumero: number | null;
+  lastSituationPeriode: string | null;
+  lastSituationStatus: string | null;
+  situationsBrouillon: number;
+  tsApprouveHt: number;
+}
+
+export interface FinanceGlobal {
+  totalBudgetHt: number;
+  totalHtCumul: number;
+  pctEngagement: number;
+  totalRgRetenu: number;
+  totalNetEnAttente: number;
+  totalTsApprouveHt: number;
+  totalSituationsBrouillon: number;
+  parSite: SiteFinanceRow[];
+}
+
 // ── Travaux supplémentaires ───────────────────────────────────────────
 
 export type TSStatus = 'BROUILLON' | 'VALIDE' | 'FACTURE' | 'PAYE';

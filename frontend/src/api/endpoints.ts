@@ -3,6 +3,7 @@ import type {
   ContratST,
   DocCategorie,
   Document,
+  FinanceGlobal,
   Lot,
   LoginResponse,
   Site,
@@ -207,6 +208,10 @@ export const sousTraitanceApi = {
     api.patch<ContratST>(`/sites/${siteId}/sous-traitance/contrats/${contratId}/situations/${situationId}`, payload).then((r) => r.data),
   deleteSituationST: (siteId: string, contratId: string, situationId: string) =>
     api.delete(`/sites/${siteId}/sous-traitance/contrats/${contratId}/situations/${situationId}`).then((r) => r.data),
+};
+
+export const dashboardApi = {
+  financeGlobal: () => api.get<FinanceGlobal>('/dashboard/finance').then((r) => r.data),
 };
 
 export interface CreateTsPayload {
