@@ -232,6 +232,36 @@ export const ROLE_LABELS: Record<Role, string> = {
   CONDUCTEUR_TRAVAUX: 'Conducteur de travaux',
 };
 
+// ── Travaux supplémentaires ───────────────────────────────────────────
+
+export type TSStatus = 'BROUILLON' | 'VALIDE' | 'FACTURE' | 'PAYE';
+
+export const TS_STATUS_LABELS: Record<TSStatus, string> = {
+  BROUILLON: 'Brouillon',
+  VALIDE: 'Validé',
+  FACTURE: 'Facturé',
+  PAYE: 'Payé',
+};
+
+export interface TravauxSupp {
+  id: string;
+  siteId: string;
+  lotId: string | null;
+  lotCode: string | null;
+  lotName: string | null;
+  reference: string;
+  description: string;
+  montantHt: number;
+  tvaRate: number;
+  montantTva: number;
+  montantTtc: number;
+  status: TSStatus;
+  dateNotif: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ── Documents ─────────────────────────────────────────────────────────
 
 export type DocCategorie =

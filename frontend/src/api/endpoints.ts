@@ -12,6 +12,8 @@ import type {
   SousTraitant,
   Task,
   TaskStatus,
+  TravauxSupp,
+  TSStatus,
   User,
 } from './types';
 
@@ -205,6 +207,38 @@ export const sousTraitanceApi = {
     api.patch<ContratST>(`/sites/${siteId}/sous-traitance/contrats/${contratId}/situations/${situationId}`, payload).then((r) => r.data),
   deleteSituationST: (siteId: string, contratId: string, situationId: string) =>
     api.delete(`/sites/${siteId}/sous-traitance/contrats/${contratId}/situations/${situationId}`).then((r) => r.data),
+};
+
+export interface CreateTsPayload {
+  reference: string;
+  description: string;
+  montantHt: number;
+  tvaRate?: number;
+  lotId?: string;
+  dateNotif?: string;
+  notes?: string;
+}
+
+export interface UpdateTsPayload {
+  reference?: string;
+  description?: string;
+  montantHt?: number;
+  tvaRate?: number;
+  lotId?: string | null;
+  status?: TSStatus;
+  dateNotif?: string;
+  notes?: string;
+}
+
+export const travauxSuppApi = {
+  list: (siteId: string) =>
+    api.get<TravauxSupp[]>(`/sites/${siteId}/travaux-supp`).then((r) => r.data),
+  create: (siteId: string, payload: CreateTsPayload) =>
+    api.post<TravauxSupp>(`/sites/${siteId}/travaux-supp`, payload).then((r) => r.data),
+  update: (siteId: string, id: string, payload: UpdateTsPayload) =>
+    api.patch<TravauxSupp>(`/sites/${siteId}/travaux-supp/${id}`, payload).then((r) => r.data),
+  remove: (siteId: string, id: string) =>
+    api.delete(`/sites/${siteId}/travaux-supp/${id}`).then((r) => r.data),
 };
 
 export const documentsApi = {

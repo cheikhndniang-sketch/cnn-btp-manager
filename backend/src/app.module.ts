@@ -10,6 +10,7 @@ import { PlanningModule } from './modules/planning/planning.module';
 import { FinanceModule } from './modules/finance/finance.module';
 import { SousTraitanceModule } from './modules/sous-traitance/sous-traitance.module';
 import { DocumentsModule } from './modules/documents/documents.module';
+import { TravauxSuppModule } from './modules/travaux-supp/travaux-supp.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -32,6 +33,7 @@ import { HealthController } from './health.controller';
     FinanceModule,
     SousTraitanceModule,
     DocumentsModule,
+    TravauxSuppModule,
   ],
   controllers: [HealthController],
   providers: [

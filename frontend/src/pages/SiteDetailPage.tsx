@@ -8,13 +8,14 @@ import { PlanningTab } from '@/components/PlanningTab';
 import { FinanceTab } from '@/components/FinanceTab';
 import { SousTraitanceTab } from '@/components/SousTraitanceTab';
 import { DocumentsTab } from '@/components/DocumentsTab';
+import { TSTab } from '@/components/TSTab';
 import { formatDate, formatFCFA } from '@/lib/format';
 import { ROLE_LABELS } from '@/api/types';
 
 const TABS = [
   { key: 'general', label: 'Vue générale', enabled: true },
   { key: 'planning', label: 'Planning', enabled: true },
-  { key: 'rapports', label: 'Rapports', enabled: false },
+  { key: 'ts', label: 'Travaux suppl.', enabled: true },
   { key: 'finance', label: 'Finance', enabled: true },
   { key: 'st', label: 'Sous-traitance', enabled: true },
   { key: 'docs', label: 'Documents', enabled: true },
@@ -127,6 +128,8 @@ export function SiteDetailPage() {
               siteName={site.name}
               siteReference={site.reference}
             />
+          ) : tab === 'ts' ? (
+            <TSTab siteId={site.id} />
           ) : tab === 'finance' ? (
             <FinanceTab
               siteId={site.id}
