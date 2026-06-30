@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { ROLE_LABELS } from '@/api/types';
 import { Logo } from './Logo';
@@ -100,12 +100,15 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
             <Logo size={32} showText={false} />
           </div>
           <div className="flex items-center gap-3 min-w-0">
-            <div className="text-right leading-tight min-w-0 hidden sm:block">
+            <Link
+              to="/profile"
+              className="text-right leading-tight min-w-0 hidden sm:block hover:opacity-70 transition-opacity"
+            >
               <div className="text-sm font-medium text-navy truncate">{user?.name}</div>
               <div className="text-xs text-slate-500 truncate">
                 {user ? ROLE_LABELS[user.role] : ''}
               </div>
-            </div>
+            </Link>
             <button onClick={handleLogout} className="btn-secondary text-sm whitespace-nowrap">
               Déconnexion
             </button>

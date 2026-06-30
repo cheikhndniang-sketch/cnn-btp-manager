@@ -4,6 +4,7 @@ import { ChangePasswordPage } from './pages/ChangePasswordPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { SiteDetailPage } from './pages/SiteDetailPage';
 import { AdminUsersPage } from './pages/AdminUsersPage';
+import { ProfilePage } from './pages/ProfilePage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 
 export default function App() {
@@ -43,6 +44,15 @@ export default function App() {
         element={
           <ProtectedRoute roles={['ADMIN']}>
             <AdminUsersPage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <ProfilePage />
           </ProtectedRoute>
         }
       />
