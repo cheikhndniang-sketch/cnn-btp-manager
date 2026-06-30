@@ -32,5 +32,5 @@ COPY --from=builder /app/package*.json ./
 
 EXPOSE 3000
 
-# v2 2026-06-30 - cache bust
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
+# v3 2026-06-30 - verbose diagnostic
+CMD ["sh", "-c", "echo '=== prisma migrate deploy ===' && npx prisma migrate deploy 2>&1 && echo '=== starting node ===' && node dist/main.js"]
