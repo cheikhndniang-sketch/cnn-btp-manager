@@ -7,6 +7,7 @@ import { KpiCard } from '@/components/KpiCard';
 import { CreateSiteModal } from '@/components/CreateSiteModal';
 import { useAuth } from '@/hooks/useAuth';
 import { formatFCFA } from '@/lib/format';
+import { exportFinanceGlobalToXlsx } from '@/lib/exportFinanceXlsx';
 import type { Site } from '@/api/types';
 
 const STATUS_BADGE: Record<Site['status'], string> = {
@@ -446,8 +447,17 @@ function FinanceGlobalTab({
 
       {/* Per-site breakdown table */}
       <div className="card p-0 overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
+        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between gap-3">
           <h2 className="font-semibold text-navy text-sm">Détail par chantier</h2>
+          <button
+            onClick={() => exportFinanceGlobalToXlsx(d)}
+            className="flex items-center gap-1.5 text-xs font-medium text-green hover:text-green/80 border border-green/40 hover:border-green/70 rounded-lg px-3 py-1.5 transition-colors bg-green-light/40"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
+            </svg>
+            Export Excel
+          </button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
