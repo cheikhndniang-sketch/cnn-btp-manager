@@ -66,6 +66,8 @@ export const usersApi = {
   update: (id: string, payload: Partial<Pick<User, 'name' | 'email' | 'role' | 'isActive'>>) =>
     api.patch<User>(`/users/${id}`, payload).then((r) => r.data),
   deactivate: (id: string) => api.delete<User>(`/users/${id}`).then((r) => r.data),
+  resetPassword: (id: string) =>
+    api.patch<{ temporaryPassword: string }>(`/users/${id}/reset-password`).then((r) => r.data),
 };
 
 export interface CreateSitePayload {

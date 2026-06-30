@@ -64,6 +64,12 @@ export class UsersController {
     return this.users.deactivate(id, { userId: actor.userId });
   }
 
+  @Patch(':id/reset-password')
+  @Roles(Role.ADMIN)
+  resetPassword(@Param('id') id: string) {
+    return this.users.resetPassword(id);
+  }
+
   @Get(':id/sites')
   @Roles(Role.DIRECTEUR_PROJET)
   findSites(@Param('id') id: string) {

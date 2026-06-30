@@ -156,6 +156,23 @@ export class UsersService {
     }));
   }
 
+  async resetPassword(id: string): Promise<{ temporaryPassword: string }> {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException('Utilisateur introuvable');
+
+    const temporaryPassword = UsersService.generatePassword();
+    const rounds = Number(this.config.get<number>('BCRYPT_ROUNDS', 12));
+    const passwordHash = await bcrypt.hash(temporaryPassword, rounds);
+
+    await this.prisma.user.update({
+      where: { id },
+      data: { passwordHash, mustChangePassword: true },
+    });
+    await this.prisma.refreshToken.deleteMany({ where: { userId: id } });
+
+    return { temporaryPassword };
+  }
+
   private static generatePassword(): string {
     // 16 caractères hex + symbole : suffisant comme mot de passe temporaire.
     return `Cse-${randomBytes(8).toString('hex')}!`;
