@@ -23,4 +23,5 @@ RUN npm i -g serve@14
 COPY --from=builder /app/dist ./dist
 
 EXPOSE 3000
+# v2 - cache bust 2026-06-30
 CMD ["sh", "-c", "serve -s dist -l ${PORT:-3000}"]

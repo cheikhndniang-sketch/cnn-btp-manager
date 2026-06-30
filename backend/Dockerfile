@@ -32,5 +32,5 @@ COPY --from=builder /app/package*.json ./
 
 EXPOSE 3000
 
-# Applique les migrations puis démarre l'API.
+# v2 2026-06-30 - cache bust
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
