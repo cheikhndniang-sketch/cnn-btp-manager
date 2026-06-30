@@ -7,9 +7,11 @@ import type {
   FinanceGlobal,
   Lot,
   LoginResponse,
+  Role,
   Site,
   SiteKpi,
   SiteMember,
+  SiteStatus,
   Situation,
   SousTraitant,
   Task,
@@ -95,6 +97,12 @@ export const sitesApi = {
   kpi: (id: string) => api.get<SiteKpi>(`/sites/${id}/kpi`).then((r) => r.data),
   members: (id: string) =>
     api.get<SiteMember[]>(`/sites/${id}/members`).then((r) => r.data),
+  addMember: (id: string, payload: { userId: string; role: Role }) =>
+    api.post<SiteMember>(`/sites/${id}/members`, payload).then((r) => r.data),
+  removeMember: (id: string, userId: string) =>
+    api.delete(`/sites/${id}/members/${userId}`).then((r) => r.data),
+  changeStatus: (id: string, status: SiteStatus) =>
+    api.patch<Site>(`/sites/${id}`, { status }).then((r) => r.data),
 };
 
 export const financeApi = {
