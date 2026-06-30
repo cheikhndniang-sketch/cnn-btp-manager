@@ -13,6 +13,100 @@ export class DashboardService {
     return global ? {} : { members: { some: { userId: actor.userId } } };
   }
 
+  async getAlerts(actor: Actor) {
+    const filter = this.siteFilter(actor);
+    const now = new Date();
+
+    const sites = await this.prisma.site.findMany({
+      where: { ...filter, status: 'ACTIVE' },
+      select: { id: true, name: true, reference: true },
+    });
+
+    if (sites.length === 0) return [];
+
+    const siteIds = sites.map((s) => s.id);
+    const siteMap = new Map(sites.map((s) => [s.id, s]));
+
+    const [lateTasksRaw, situBrouillon, tsBrouillon] = await Promise.all([
+      this.prisma.task.findMany({
+        where: {
+          lot: { siteId: { in: siteIds } },
+          status: { not: 'DONE' },
+          endDate: { lt: now },
+        },
+        select: { lot: { select: { siteId: true } } },
+      }),
+      this.prisma.situation.groupBy({
+        by: ['siteId'],
+        where: { siteId: { in: siteIds }, status: 'BROUILLON' },
+        _count: { id: true },
+      }),
+      this.prisma.travauxSupp.groupBy({
+        by: ['siteId'],
+        where: { siteId: { in: siteIds }, status: 'BROUILLON' },
+        _count: { id: true },
+      }),
+    ]);
+
+    const lateTasksBySite = new Map<string, number>();
+    for (const t of lateTasksRaw) {
+      const sid = t.lot.siteId;
+      lateTasksBySite.set(sid, (lateTasksBySite.get(sid) ?? 0) + 1);
+    }
+
+    const alerts: Array<{
+      type: string;
+      severity: string;
+      siteId: string;
+      siteName: string;
+      siteReference: string;
+      count: number;
+    }> = [];
+
+    for (const [siteId, count] of lateTasksBySite) {
+      const site = siteMap.get(siteId);
+      if (!site) continue;
+      alerts.push({
+        type: 'TASKS_LATE',
+        severity: 'WARNING',
+        siteId,
+        siteName: site.name,
+        siteReference: site.reference,
+        count,
+      });
+    }
+
+    for (const g of situBrouillon) {
+      const site = siteMap.get(g.siteId);
+      if (!site) continue;
+      alerts.push({
+        type: 'SITUATION_BROUILLON',
+        severity: 'INFO',
+        siteId: g.siteId,
+        siteName: site.name,
+        siteReference: site.reference,
+        count: g._count.id,
+      });
+    }
+
+    for (const g of tsBrouillon) {
+      const site = siteMap.get(g.siteId);
+      if (!site) continue;
+      alerts.push({
+        type: 'TS_BROUILLON',
+        severity: 'INFO',
+        siteId: g.siteId,
+        siteName: site.name,
+        siteReference: site.reference,
+        count: g._count.id,
+      });
+    }
+
+    alerts.sort((a, b) => (a.severity === 'WARNING' ? -1 : 1) - (b.severity === 'WARNING' ? -1 : 1));
+
+    return alerts;
+  }
+
   async getFinanceGlobal(actor: Actor) {
     const sites = await this.prisma.site.findMany({
       where: this.siteFilter(actor),

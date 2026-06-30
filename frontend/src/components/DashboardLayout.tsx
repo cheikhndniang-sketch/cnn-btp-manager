@@ -1,7 +1,9 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
-import { ROLE_LABELS } from '@/api/types';
+import { ALERT_TYPE_LABELS, ROLE_LABELS, type AppAlert } from '@/api/types';
+import { dashboardApi } from '@/api/endpoints';
 import { Logo } from './Logo';
 
 const NAV_ITEMS = [
@@ -12,6 +14,133 @@ const NAV_ITEMS = [
   { label: 'Documents', to: '#', enabled: false },
 ];
 
+// ── Bell icon SVG ─────────────────────────────────────────────────────
+function BellIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round"
+        d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+    </svg>
+  );
+}
+
+// ── Alert type config ─────────────────────────────────────────────────
+function alertIcon(type: AppAlert['type']) {
+  if (type === 'TASKS_LATE') return '⚠️';
+  if (type === 'SITUATION_BROUILLON') return '📋';
+  return '📝';
+}
+
+function alertDesc(a: AppAlert) {
+  if (a.type === 'TASKS_LATE')
+    return `${a.count} tâche${a.count > 1 ? 's' : ''} en retard`;
+  if (a.type === 'SITUATION_BROUILLON')
+    return `${a.count} situation${a.count > 1 ? 's' : ''} en brouillon`;
+  return `${a.count} TS en attente de validation`;
+}
+
+// ── Alerts bell + dropdown ────────────────────────────────────────────
+function AlertsBell() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const { data: alerts = [] } = useQuery({
+    queryKey: ['alerts'],
+    queryFn: dashboardApi.alerts,
+    refetchInterval: 5 * 60 * 1000, // refresh every 5 min
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const warnings = alerts.filter((a) => a.severity === 'WARNING');
+  const total = alerts.length;
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:text-navy hover:border-slate-300 transition-colors"
+        aria-label="Alertes"
+      >
+        <BellIcon className="w-5 h-5" />
+        {total > 0 && (
+          <span className={`absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full text-[10px] font-bold text-white flex items-center justify-center px-0.5 ${
+            warnings.length > 0 ? 'bg-red' : 'bg-cyan'
+          }`}>
+            {total > 99 ? '99+' : total}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-11 z-50 w-80 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+            <span className="text-sm font-semibold text-navy">Alertes</span>
+            {total > 0 && (
+              <span className="text-xs text-slate-400">{total} alerte{total > 1 ? 's' : ''}</span>
+            )}
+          </div>
+
+          {total === 0 ? (
+            <div className="px-4 py-8 text-center text-sm text-slate-400">
+              <div className="text-2xl mb-2">✓</div>
+              Aucune alerte en cours
+            </div>
+          ) : (
+            <ul className="max-h-80 overflow-y-auto divide-y divide-slate-50">
+              {alerts.map((a, i) => (
+                <li key={i}>
+                  <Link
+                    to={`/sites/${a.siteId}`}
+                    onClick={() => setOpen(false)}
+                    className="flex items-start gap-3 px-4 py-3 hover:bg-surface-0 transition-colors"
+                  >
+                    <span className="text-base mt-0.5 flex-shrink-0">{alertIcon(a.type)}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-navy truncate">
+                        {a.siteReference} — {a.siteName}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        <span className={`font-medium ${a.severity === 'WARNING' ? 'text-red' : 'text-cyan'}`}>
+                          {ALERT_TYPE_LABELS[a.type]}
+                        </span>
+                        {' · '}{alertDesc(a)}
+                      </p>
+                    </div>
+                    <span className={`mt-1 flex-shrink-0 w-2 h-2 rounded-full ${
+                      a.severity === 'WARNING' ? 'bg-red' : 'bg-cyan'
+                    }`} />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="px-4 py-2 border-t border-slate-100 bg-surface-0">
+            <Link
+              to="/dashboard"
+              onClick={() => setOpen(false)}
+              className="text-xs text-cyan hover:underline"
+            >
+              Voir tous les chantiers →
+            </Link>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Layout ────────────────────────────────────────────────────────────
 export function DashboardLayout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -100,6 +229,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
             <Logo size={32} showText={false} />
           </div>
           <div className="flex items-center gap-3 min-w-0">
+            <AlertsBell />
             <Link
               to="/profile"
               className="text-right leading-tight min-w-0 hidden sm:block hover:opacity-70 transition-opacity"

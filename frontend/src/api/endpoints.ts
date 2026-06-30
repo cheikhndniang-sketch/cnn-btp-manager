@@ -1,5 +1,6 @@
 import { api } from './client';
 import type {
+  AppAlert,
   ContratST,
   DocCategorie,
   Document,
@@ -214,6 +215,7 @@ export const sousTraitanceApi = {
 
 export const dashboardApi = {
   financeGlobal: () => api.get<FinanceGlobal>('/dashboard/finance').then((r) => r.data),
+  alerts: () => api.get<AppAlert[]>('/dashboard/alerts').then((r) => r.data),
 };
 
 export interface CreateTsPayload {

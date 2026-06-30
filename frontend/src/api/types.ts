@@ -295,6 +295,26 @@ export interface TravauxSupp {
   updatedAt: string;
 }
 
+// ── Alertes ───────────────────────────────────────────────────────────
+
+export type AlertType = 'TASKS_LATE' | 'SITUATION_BROUILLON' | 'TS_BROUILLON';
+export type AlertSeverity = 'WARNING' | 'INFO';
+
+export interface AppAlert {
+  type: AlertType;
+  severity: AlertSeverity;
+  siteId: string;
+  siteName: string;
+  siteReference: string;
+  count: number;
+}
+
+export const ALERT_TYPE_LABELS: Record<AlertType, string> = {
+  TASKS_LATE: 'Tâches en retard',
+  SITUATION_BROUILLON: 'Situation brouillon',
+  TS_BROUILLON: 'Travaux suppl. à valider',
+};
+
 // ── Documents ─────────────────────────────────────────────────────────
 
 export type DocCategorie =
