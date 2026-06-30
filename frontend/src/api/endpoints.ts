@@ -1,12 +1,15 @@
 import { api } from './client';
 import type {
   AppAlert,
+  Avenant,
   ContratST,
   DocCategorie,
   Document,
   FinanceGlobal,
   Lot,
   LoginResponse,
+  Meteo,
+  RapportChantier,
   Role,
   Site,
   SiteKpi,
@@ -224,6 +227,8 @@ export const sousTraitanceApi = {
 export const dashboardApi = {
   financeGlobal: () => api.get<FinanceGlobal>('/dashboard/finance').then((r) => r.data),
   alerts: () => api.get<AppAlert[]>('/dashboard/alerts').then((r) => r.data),
+  planningGlobal: () =>
+    api.get<import('./types').GlobalPlanningSite[]>('/dashboard/planning').then((r) => r.data),
 };
 
 export interface CreateTsPayload {
@@ -256,6 +261,47 @@ export const travauxSuppApi = {
     api.patch<TravauxSupp>(`/sites/${siteId}/travaux-supp/${id}`, payload).then((r) => r.data),
   remove: (siteId: string, id: string) =>
     api.delete(`/sites/${siteId}/travaux-supp/${id}`).then((r) => r.data),
+};
+
+export interface CreateRapportPayload {
+  date: string;
+  meteo?: Meteo;
+  effectif?: number;
+  travauxRealises?: string;
+  materiaux?: string;
+  observations?: string;
+  incidents?: string;
+}
+
+export const rapportsApi = {
+  list: (siteId: string) =>
+    api.get<RapportChantier[]>(`/sites/${siteId}/rapports`).then((r) => r.data),
+  upsert: (siteId: string, payload: CreateRapportPayload) =>
+    api.post<RapportChantier>(`/sites/${siteId}/rapports`, payload).then((r) => r.data),
+  update: (siteId: string, id: string, payload: Partial<CreateRapportPayload>) =>
+    api.patch<RapportChantier>(`/sites/${siteId}/rapports/${id}`, payload).then((r) => r.data),
+  remove: (siteId: string, id: string) =>
+    api.delete(`/sites/${siteId}/rapports/${id}`).then((r) => r.data),
+};
+
+export interface CreateAvenantPayload {
+  numero: number;
+  objet: string;
+  montantHt: number;
+  dateNotif: string;
+  dateApprobation?: string;
+  notes?: string;
+}
+
+export const avenantsApi = {
+  list: (siteId: string) =>
+    api.get<Avenant[]>(`/sites/${siteId}/finance/avenants`).then((r) => r.data),
+  create: (siteId: string, payload: CreateAvenantPayload) =>
+    api.post<Avenant>(`/sites/${siteId}/finance/avenants`, payload).then((r) => r.data),
+  update: (siteId: string, id: string, payload: Partial<CreateAvenantPayload>) =>
+    api.patch<Avenant>(`/sites/${siteId}/finance/avenants/${id}`, payload).then((r) => r.data),
+  remove: (siteId: string, id: string) =>
+    api.delete(`/sites/${siteId}/finance/avenants/${id}`).then((r) => r.data),
 };
 
 export const documentsApi = {

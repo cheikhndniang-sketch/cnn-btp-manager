@@ -251,6 +251,74 @@ export class FinanceService {
     });
   }
 
+  /* ── Avenants ───────────────────────────────────────────────────── */
+
+  async listAvenants(siteId: string, actor: Actor) {
+    await this.sites.assertCanAccess(siteId, actor);
+    const rows = await this.prisma.avenant.findMany({
+      where: { siteId },
+      orderBy: { numero: 'asc' },
+    });
+    return rows.map((a) => ({
+      ...a,
+      montantHt: bigToNum(a.montantHt),
+    }));
+  }
+
+  async createAvenant(
+    siteId: string,
+    dto: import('./dto/create-avenant.dto').CreateAvenantDto,
+    actor: Actor,
+  ) {
+    await this.sites.assertCanAccess(siteId, actor);
+    this.canWrite(actor);
+    const row = await this.prisma.avenant.create({
+      data: {
+        siteId,
+        numero: dto.numero,
+        objet: dto.objet,
+        montantHt: BigInt(Math.round(dto.montantHt)),
+        dateNotif: new Date(dto.dateNotif),
+        dateApprobation: dto.dateApprobation ? new Date(dto.dateApprobation) : null,
+        notes: dto.notes,
+      },
+    });
+    return { ...row, montantHt: bigToNum(row.montantHt) };
+  }
+
+  async updateAvenant(
+    siteId: string,
+    avenantId: string,
+    dto: Partial<import('./dto/create-avenant.dto').CreateAvenantDto>,
+    actor: Actor,
+  ) {
+    await this.sites.assertCanAccess(siteId, actor);
+    this.canWrite(actor);
+    const existing = await this.prisma.avenant.findFirst({ where: { id: avenantId, siteId } });
+    if (!existing) throw new NotFoundException('Avenant introuvable');
+    const row = await this.prisma.avenant.update({
+      where: { id: avenantId },
+      data: {
+        ...(dto.objet !== undefined && { objet: dto.objet }),
+        ...(dto.montantHt !== undefined && { montantHt: BigInt(Math.round(dto.montantHt)) }),
+        ...(dto.dateNotif !== undefined && { dateNotif: new Date(dto.dateNotif) }),
+        ...(dto.dateApprobation !== undefined && {
+          dateApprobation: dto.dateApprobation ? new Date(dto.dateApprobation) : null,
+        }),
+        ...(dto.notes !== undefined && { notes: dto.notes }),
+      },
+    });
+    return { ...row, montantHt: bigToNum(row.montantHt) };
+  }
+
+  async deleteAvenant(siteId: string, avenantId: string, actor: Actor) {
+    await this.sites.assertCanAccess(siteId, actor);
+    this.canWrite(actor);
+    const existing = await this.prisma.avenant.findFirst({ where: { id: avenantId, siteId } });
+    if (!existing) throw new NotFoundException('Avenant introuvable');
+    await this.prisma.avenant.delete({ where: { id: avenantId } });
+  }
+
   /* ── Mapper ──────────────────────────────────────────────────────── */
 
   private mapSituation(s: SituationRow, site: SiteFinance) {

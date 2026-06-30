@@ -87,6 +87,8 @@ model Site {
   situationsST  SituationST[]
   documents     Document[]
   travauxSupp   TravauxSupp[]
+  rapports      RapportChantier[]
+  avenants      Avenant[]
 
   @@index([status])
 }
@@ -352,6 +354,55 @@ model TravauxSupp {
 
   @@index([siteId])
   @@index([siteId, status])
+}
+
+// ── Journal de chantier ───────────────────────────────────────────
+
+enum Meteo {
+  SOLEIL
+  NUAGEUX
+  PLUIE
+  ORAGE
+}
+
+model RapportChantier {
+  id              String   @id @default(uuid())
+  siteId          String
+  date            DateTime @db.Date
+  meteo           Meteo?
+  effectif        Int      @default(0)
+  travauxRealises String?
+  materiaux       String?
+  observations    String?
+  incidents       String?
+  redacteurId     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([siteId, date])
+  @@index([siteId])
+}
+
+// ── Avenants au marché ────────────────────────────────────────────
+
+model Avenant {
+  id              String    @id @default(uuid())
+  siteId          String
+  numero          Int
+  objet           String
+  montantHt       BigInt    @default(0)
+  dateNotif       DateTime  @db.Date
+  dateApprobation DateTime? @db.Date
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([siteId, numero])
+  @@index([siteId])
 }
 
 model AuditLog {

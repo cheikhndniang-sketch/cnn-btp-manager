@@ -20,6 +20,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { CreateSituationDto } from './dto/create-situation.dto';
 import { UpdateSituationDto } from './dto/update-situation.dto';
 import { UpdateLigneDto } from './dto/update-ligne.dto';
+import { CreateAvenantDto } from './dto/create-avenant.dto';
 import { FinanceService } from './finance.service';
 
 @Controller('sites/:siteId/finance')
@@ -99,5 +100,41 @@ export class FinanceController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.finance.updateLotBudget(siteId, lotId, montantMarcheHt, this.actor(user));
+  }
+
+  /* ── Avenants ───────────────────────────────────────────────────── */
+
+  @Get('avenants')
+  listAvenants(@Param('siteId') siteId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.finance.listAvenants(siteId, this.actor(user));
+  }
+
+  @Post('avenants')
+  createAvenant(
+    @Param('siteId') siteId: string,
+    @Body() dto: CreateAvenantDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.finance.createAvenant(siteId, dto, this.actor(user));
+  }
+
+  @Patch('avenants/:avenantId')
+  updateAvenant(
+    @Param('siteId') siteId: string,
+    @Param('avenantId') avenantId: string,
+    @Body() dto: Partial<CreateAvenantDto>,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.finance.updateAvenant(siteId, avenantId, dto, this.actor(user));
+  }
+
+  @Delete('avenants/:avenantId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteAvenant(
+    @Param('siteId') siteId: string,
+    @Param('avenantId') avenantId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    await this.finance.deleteAvenant(siteId, avenantId, this.actor(user));
   }
 }

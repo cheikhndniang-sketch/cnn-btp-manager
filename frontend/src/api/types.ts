@@ -315,6 +315,75 @@ export const ALERT_TYPE_LABELS: Record<AlertType, string> = {
   TS_BROUILLON: 'Travaux suppl. à valider',
 };
 
+// ── Journal de chantier ───────────────────────────────────────────────
+
+export type Meteo = 'SOLEIL' | 'NUAGEUX' | 'PLUIE' | 'ORAGE';
+
+export const METEO_LABELS: Record<Meteo, string> = {
+  SOLEIL: '☀️ Soleil',
+  NUAGEUX: '⛅ Nuageux',
+  PLUIE: '🌧️ Pluie',
+  ORAGE: '⛈️ Orage',
+};
+
+export interface RapportChantier {
+  id: string;
+  siteId: string;
+  date: string;
+  meteo: Meteo | null;
+  effectif: number;
+  travauxRealises: string | null;
+  materiaux: string | null;
+  observations: string | null;
+  incidents: string | null;
+  redacteurId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── Avenants ──────────────────────────────────────────────────────────
+
+export interface Avenant {
+  id: string;
+  siteId: string;
+  numero: number;
+  objet: string;
+  montantHt: number;
+  dateNotif: string;
+  dateApprobation: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── Planning global ───────────────────────────────────────────────────
+
+export interface GlobalTask {
+  id: string;
+  name: string;
+  status: TaskStatus;
+  progressPct: number;
+  startDate: string | null;
+  endDate: string | null;
+  enRetard: boolean;
+}
+
+export interface GlobalLot {
+  id: string;
+  code: string;
+  name: string;
+  startDate: string | null;
+  endDate: string | null;
+  tasks: GlobalTask[];
+}
+
+export interface GlobalPlanningSite {
+  siteId: string;
+  siteName: string;
+  siteReference: string;
+  lots: GlobalLot[];
+}
+
 // ── Documents ─────────────────────────────────────────────────────────
 
 export type DocCategorie =

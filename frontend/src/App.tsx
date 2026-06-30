@@ -5,6 +5,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { SiteDetailPage } from './pages/SiteDetailPage';
 import { AdminUsersPage } from './pages/AdminUsersPage';
 import { ProfilePage } from './pages/ProfilePage';
+import { GlobalPlanningPage } from './pages/GlobalPlanningPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 
 export default function App() {
@@ -53,6 +54,15 @@ export default function App() {
         element={
           <ProtectedRoute>
             <ProfilePage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/planning"
+        element={
+          <ProtectedRoute>
+            <GlobalPlanningPage />
           </ProtectedRoute>
         }
       />

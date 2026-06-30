@@ -18,6 +18,11 @@ export class DashboardController {
     return this.svc.getAlerts({ userId: user.userId, role: user.role as Role });
   }
 
+  @Get('planning')
+  planningGlobal(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.getPlanningGlobal({ userId: user.userId, role: user.role as Role });
+  }
+
   @Get('finance')
   financeGlobal(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.getFinanceGlobal({

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, Role } from '@prisma/client';
+import { Prisma, Role, TaskStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 type Actor = { userId: string; role: Role };
@@ -105,6 +105,72 @@ export class DashboardService {
     alerts.sort((a, b) => (a.severity === 'WARNING' ? -1 : 1) - (b.severity === 'WARNING' ? -1 : 1));
 
     return alerts;
+  }
+
+  async getPlanningGlobal(actor: Actor) {
+    const now = new Date();
+    const filter = this.siteFilter(actor);
+
+    const sites = await this.prisma.site.findMany({
+      where: { ...filter, status: 'ACTIVE' },
+      select: {
+        id: true,
+        name: true,
+        reference: true,
+        lots: {
+          orderBy: [{ position: 'asc' }, { code: 'asc' }],
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            startDate: true,
+            endDate: true,
+            tasks: {
+              orderBy: [{ position: 'asc' }],
+              select: {
+                id: true,
+                name: true,
+                status: true,
+                progressPct: true,
+                startDate: true,
+                endDate: true,
+                weight: true,
+                position: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return sites.map((s) => ({
+      siteId: s.id,
+      siteName: s.name,
+      siteReference: s.reference,
+      lots: s.lots.map((l) => ({
+        id: l.id,
+        code: l.code,
+        name: l.name,
+        startDate: l.startDate,
+        endDate: l.endDate,
+        tasks: l.tasks.map((t) => {
+          const enRetard =
+            t.status !== TaskStatus.DONE &&
+            t.endDate !== null &&
+            t.endDate < now;
+          return {
+            id: t.id,
+            name: t.name,
+            status: t.status,
+            progressPct: t.progressPct,
+            startDate: t.startDate,
+            endDate: t.endDate,
+            enRetard,
+          };
+        }),
+      })),
+    }));
   }
 
   async getFinanceGlobal(actor: Actor) {

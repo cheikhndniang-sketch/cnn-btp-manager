@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { sitesApi, dashboardApi } from '@/api/endpoints';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { KpiCard } from '@/components/KpiCard';
@@ -26,9 +26,18 @@ type DashTab = 'avancement' | 'finance';
 
 export function DashboardPage() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [showCreate, setShowCreate] = useState(false);
   const [statusFilter, setStatusFilter] = useState<Site['status'] | 'ALL'>('ALL');
-  const [dashTab, setDashTab] = useState<DashTab>('avancement');
+  const [dashTab, setDashTab] = useState<DashTab>(
+    searchParams.get('tab') === 'finance' ? 'finance' : 'avancement',
+  );
+
+  function switchTab(t: DashTab) {
+    setDashTab(t);
+    if (t === 'finance') setSearchParams({ tab: 'finance' }, { replace: true });
+    else setSearchParams({}, { replace: true });
+  }
   const canCreate = user?.role === 'ADMIN' || user?.role === 'DIRECTEUR_PROJET';
 
   const { data: sites = [], isLoading } = useQuery({
@@ -81,7 +90,7 @@ export function DashboardPage() {
         {(['avancement', 'finance'] as DashTab[]).map((t) => (
           <button
             key={t}
-            onClick={() => setDashTab(t)}
+            onClick={() => switchTab(t)}
             className={`px-4 py-2 text-sm whitespace-nowrap border-b-2 -mb-px transition-colors capitalize ${
               dashTab === t
                 ? 'border-cyan text-cyan-dark font-medium'

@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { financeApi, planningApi, sitesApi, type CreateSituationPayload } from '@/api/endpoints';
+import { avenantsApi, financeApi, planningApi, sitesApi, type CreateAvenantPayload, type CreateSituationPayload } from '@/api/endpoints';
 import { useAuth } from '@/hooks/useAuth';
 import {
   SITUATION_STATUS_LABELS,
+  type Avenant,
   type Role,
   type Site,
   type Situation,
@@ -137,6 +138,13 @@ export function FinanceTab({
     queryKey: ['planning', siteId],
     queryFn: () => planningApi.listLots(siteId),
   });
+  const { data: avenants = [] } = useQuery({
+    queryKey: ['avenants', siteId],
+    queryFn: () => avenantsApi.list(siteId),
+  });
+
+  const refreshAvenants = () =>
+    queryClient.invalidateQueries({ queryKey: ['avenants', siteId] });
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ['finance', siteId] });
@@ -276,6 +284,15 @@ export function FinanceTab({
           ))}
         </div>
       )}
+
+      {/* ── Avenants ─────────────────────────────────────────────────── */}
+      <AvenantsSection
+        siteId={siteId}
+        marcheHt={site.marcheHt}
+        avenants={avenants}
+        canWrite={canWrite}
+        onChange={refreshAvenants}
+      />
     </div>
   );
 }
@@ -676,6 +693,205 @@ function FactureDialog({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ── Avenants ──────────────────────────────────────────────────────────── */
+function AvenantsSection({
+  siteId, marcheHt, avenants, canWrite, onChange,
+}: {
+  siteId: string;
+  marcheHt: number;
+  avenants: Avenant[];
+  canWrite: boolean;
+  onChange: () => void;
+}) {
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<Partial<CreateAvenantPayload>>({});
+
+  const totalAvenants = avenants.reduce((s, a) => s + a.montantHt, 0);
+  const montantEffectif = marcheHt + totalAvenants;
+
+  const createMut = useMutation({
+    mutationFn: (payload: CreateAvenantPayload) => avenantsApi.create(siteId, payload),
+    onSuccess: () => { setShowForm(false); setForm({}); onChange(); },
+  });
+  const updateMut = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Partial<CreateAvenantPayload> }) =>
+      avenantsApi.update(siteId, id, payload),
+    onSuccess: () => { setEditingId(null); setForm({}); onChange(); },
+  });
+  const removeMut = useMutation({
+    mutationFn: (id: string) => avenantsApi.remove(siteId, id),
+    onSuccess: onChange,
+  });
+
+  function openEdit(a: Avenant) {
+    setEditingId(a.id);
+    setForm({
+      numero: a.numero,
+      objet: a.objet,
+      montantHt: a.montantHt,
+      dateNotif: a.dateNotif.slice(0, 10),
+      dateApprobation: a.dateApprobation?.slice(0, 10),
+      notes: a.notes ?? undefined,
+    });
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (editingId) {
+      updateMut.mutate({ id: editingId, payload: form });
+    } else {
+      createMut.mutate(form as CreateAvenantPayload);
+    }
+  }
+
+  const isPending = createMut.isPending || updateMut.isPending;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="font-semibold text-navy">Avenants au marché</h2>
+        {canWrite && !showForm && !editingId && (
+          <button onClick={() => { setShowForm(true); setForm({ dateNotif: thisDay(), numero: (avenants.length + 1) }); }} className="btn-secondary text-sm">
+            + Avenant
+          </button>
+        )}
+      </div>
+
+      {/* Synthèse */}
+      <div className="card">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+          <div>
+            <div className="text-xs text-slate-500 mb-0.5">Marché initial HT</div>
+            <div className="font-medium text-navy">{formatFCFA(marcheHt)}</div>
+          </div>
+          <div>
+            <div className="text-xs text-slate-500 mb-0.5">Total avenants</div>
+            <div className={`font-medium ${totalAvenants >= 0 ? 'text-green' : 'text-red'}`}>
+              {totalAvenants >= 0 ? '+' : ''}{formatFCFA(totalAvenants)}
+            </div>
+          </div>
+          <div className="col-span-2 sm:col-span-1">
+            <div className="text-xs text-slate-500 mb-0.5">Montant effectif HT</div>
+            <div className="font-bold text-navy">{formatFCFA(montantEffectif)}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Formulaire inline */}
+      {(showForm || editingId) && (
+        <form onSubmit={handleSubmit} className="card border-2 border-cyan/30 space-y-3">
+          <h3 className="font-medium text-navy text-sm">
+            {editingId ? 'Modifier l\'avenant' : 'Nouvel avenant'}
+          </h3>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">N° avenant *</label>
+              <input type="number" min={1} required className="input w-full text-sm"
+                value={form.numero ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, numero: Number(e.target.value) }))} />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Montant HT (FCFA) *</label>
+              <input type="number" step={1} required className="input w-full text-sm"
+                placeholder="Négatif si réduction"
+                value={form.montantHt ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, montantHt: Number(e.target.value) }))} />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs text-slate-500 mb-1">Objet *</label>
+              <input required className="input w-full text-sm"
+                value={form.objet ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, objet: e.target.value }))} />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Date de notification *</label>
+              <input type="date" required className="input w-full text-sm"
+                value={form.dateNotif ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, dateNotif: e.target.value }))} />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Date d'approbation</label>
+              <input type="date" className="input w-full text-sm"
+                value={form.dateApprobation ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, dateApprobation: e.target.value || undefined }))} />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs text-slate-500 mb-1">Notes</label>
+              <input className="input w-full text-sm"
+                value={form.notes ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value || undefined }))} />
+            </div>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button type="button" className="btn-secondary text-sm"
+              onClick={() => { setShowForm(false); setEditingId(null); setForm({}); }}>
+              Annuler
+            </button>
+            <button type="submit" className="btn-primary text-sm" disabled={isPending}>
+              {isPending ? 'Enregistrement…' : editingId ? 'Mettre à jour' : 'Créer'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {avenants.length === 0 ? (
+        <div className="card py-8 text-center text-sm text-slate-400">Aucun avenant.</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-xs text-slate-500 uppercase tracking-wide">
+                <th className="text-left pb-2 pr-3">N°</th>
+                <th className="text-left pb-2 pr-3">Objet</th>
+                <th className="text-right pb-2 pr-3">Montant HT</th>
+                <th className="text-left pb-2 pr-3">Notif.</th>
+                <th className="text-left pb-2">Approbation</th>
+                {canWrite && <th className="pb-2" />}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {avenants.map((a) => (
+                <tr key={a.id} className="hover:bg-surface-1">
+                  <td className="py-2 pr-3 font-medium text-navy">A-{a.numero}</td>
+                  <td className="py-2 pr-3 text-slate-700 max-w-[220px] truncate">{a.objet}</td>
+                  <td className={`py-2 pr-3 text-right font-medium ${a.montantHt >= 0 ? 'text-green' : 'text-red'}`}>
+                    {a.montantHt >= 0 ? '+' : ''}{formatFCFA(a.montantHt)}
+                  </td>
+                  <td className="py-2 pr-3 text-slate-500 text-xs">{a.dateNotif.slice(0, 10)}</td>
+                  <td className="py-2 text-xs">
+                    {a.dateApprobation ? (
+                      <span className="text-green">{a.dateApprobation.slice(0, 10)}</span>
+                    ) : (
+                      <span className="text-orange">En attente</span>
+                    )}
+                  </td>
+                  {canWrite && (
+                    <td className="py-2 pl-2">
+                      <div className="flex gap-2 justify-end">
+                        <button onClick={() => openEdit(a)} className="text-xs text-cyan-dark hover:underline">
+                          Modifier
+                        </button>
+                        <button
+                          onClick={() => { if (confirm('Supprimer cet avenant ?')) removeMut.mutate(a.id); }}
+                          disabled={removeMut.isPending}
+                          className="text-xs text-slate-400 hover:text-red transition-colors"
+                        >
+                          Supprimer
+                        </button>
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

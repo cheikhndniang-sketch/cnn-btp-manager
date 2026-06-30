@@ -12,6 +12,7 @@ import { SousTraitanceModule } from './modules/sous-traitance/sous-traitance.mod
 import { DocumentsModule } from './modules/documents/documents.module';
 import { TravauxSuppModule } from './modules/travaux-supp/travaux-supp.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { RapportsModule } from './modules/rapports/rapports.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -36,6 +37,7 @@ import { HealthController } from './health.controller';
     DocumentsModule,
     TravauxSuppModule,
     DashboardModule,
+    RapportsModule,
   ],
   controllers: [HealthController],
   providers: [

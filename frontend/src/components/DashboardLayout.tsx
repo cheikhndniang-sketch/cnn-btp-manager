@@ -8,8 +8,8 @@ import { Logo } from './Logo';
 
 const NAV_ITEMS = [
   { label: 'Chantiers', to: '/dashboard', enabled: true },
-  { label: 'Planning', to: '#', enabled: false },
-  { label: 'Finance', to: '#', enabled: false },
+  { label: 'Planning', to: '/planning', enabled: true },
+  { label: 'Finance', to: '/dashboard?tab=finance', enabled: true },
   { label: 'Sous-traitance', to: '#', enabled: false },
   { label: 'Documents', to: '#', enabled: false },
 ];
