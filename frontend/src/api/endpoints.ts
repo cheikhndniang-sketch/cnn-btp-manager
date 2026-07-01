@@ -9,7 +9,11 @@ import type {
   Lot,
   LoginResponse,
   Meteo,
+  Ouvrier,
+  Pointage,
+  QualificationOuvrier,
   RapportChantier,
+  ResumeMensuel,
   Role,
   Site,
   SiteKpi,
@@ -302,6 +306,39 @@ export const avenantsApi = {
     api.patch<Avenant>(`/sites/${siteId}/finance/avenants/${id}`, payload).then((r) => r.data),
   remove: (siteId: string, id: string) =>
     api.delete(`/sites/${siteId}/finance/avenants/${id}`).then((r) => r.data),
+};
+
+export interface CreateOuvrierPayload {
+  nom: string;
+  prenom?: string;
+  fonction?: string;
+  qualification?: QualificationOuvrier;
+  tauxJournalier: number;
+  dateEntree: string;
+  dateSortie?: string;
+  telephone?: string;
+  notes?: string;
+}
+
+export const effectifApi = {
+  listOuvriers: (siteId: string, actifOnly = false) =>
+    api.get<Ouvrier[]>(`/sites/${siteId}/effectif/ouvriers`, {
+      params: actifOnly ? { actif: 'true' } : {},
+    }).then((r) => r.data),
+  createOuvrier: (siteId: string, payload: CreateOuvrierPayload) =>
+    api.post<Ouvrier>(`/sites/${siteId}/effectif/ouvriers`, payload).then((r) => r.data),
+  updateOuvrier: (siteId: string, id: string, payload: Partial<CreateOuvrierPayload> & { actif?: boolean }) =>
+    api.patch<Ouvrier>(`/sites/${siteId}/effectif/ouvriers/${id}`, payload).then((r) => r.data),
+  removeOuvrier: (siteId: string, id: string) =>
+    api.delete(`/sites/${siteId}/effectif/ouvriers/${id}`).then((r) => r.data),
+  listPointages: (siteId: string, mois: string) =>
+    api.get<Pointage[]>(`/sites/${siteId}/effectif/pointages`, { params: { mois } }).then((r) => r.data),
+  upsertPointage: (siteId: string, payload: { ouvrierId: string; date: string; present?: boolean; heures?: number; notes?: string }) =>
+    api.post<Pointage>(`/sites/${siteId}/effectif/pointages`, payload).then((r) => r.data),
+  deletePointage: (siteId: string, id: string) =>
+    api.delete(`/sites/${siteId}/effectif/pointages/${id}`).then((r) => r.data),
+  resume: (siteId: string, mois: string) =>
+    api.get<ResumeMensuel>(`/sites/${siteId}/effectif/resume`, { params: { mois } }).then((r) => r.data),
 };
 
 export const documentsApi = {

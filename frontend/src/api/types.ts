@@ -422,3 +422,72 @@ export interface Document {
   updatedAt: string;
   user: { name: string };
 }
+
+// ── Suivi effectif & salaires ─────────────────────────────────────────
+
+export type QualificationOuvrier =
+  | 'MANOEUVRE'
+  | 'OUVRIER_SPECIALISE'
+  | 'CHEF_EQUIPE'
+  | 'TECHNICIEN'
+  | 'AGENT_MAITRISE'
+  | 'INGENIEUR'
+  | 'AUTRE';
+
+export const QUALIFICATION_LABELS: Record<QualificationOuvrier, string> = {
+  MANOEUVRE: 'Manœuvre',
+  OUVRIER_SPECIALISE: 'Ouvrier spécialisé',
+  CHEF_EQUIPE: "Chef d'équipe",
+  TECHNICIEN: 'Technicien',
+  AGENT_MAITRISE: 'Agent de maîtrise',
+  INGENIEUR: 'Ingénieur',
+  AUTRE: 'Autre',
+};
+
+export interface Ouvrier {
+  id: string;
+  siteId: string;
+  nom: string;
+  prenom: string | null;
+  fonction: string | null;
+  qualification: QualificationOuvrier;
+  tauxJournalier: number;
+  dateEntree: string;
+  dateSortie: string | null;
+  actif: boolean;
+  telephone: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Pointage {
+  id: string;
+  ouvrierId: string;
+  siteId: string;
+  date: string;
+  present: boolean;
+  heures: number;
+  notes: string | null;
+  createdAt: string;
+  ouvrier: Pick<Ouvrier, 'id' | 'nom' | 'prenom' | 'fonction'>;
+}
+
+export interface LigneResume {
+  ouvrierId: string;
+  nom: string;
+  prenom: string | null;
+  fonction: string | null;
+  qualification: QualificationOuvrier;
+  tauxJournalier: number;
+  joursPresents: number;
+  heuresTotales: number;
+  salaireHt: number;
+}
+
+export interface ResumeMensuel {
+  mois: string;
+  lignes: LigneResume[];
+  totalJours: number;
+  totalSalaire: number;
+}

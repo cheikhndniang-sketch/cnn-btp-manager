@@ -89,6 +89,8 @@ model Site {
   travauxSupp   TravauxSupp[]
   rapports      RapportChantier[]
   avenants      Avenant[]
+  ouvriers      Ouvrier[]
+  pointages     Pointage[]
 
   @@index([status])
 }
@@ -403,6 +405,59 @@ model Avenant {
 
   @@unique([siteId, numero])
   @@index([siteId])
+}
+
+// ── Suivi effectif & salaires ─────────────────────────────────────────
+
+enum QualificationOuvrier {
+  MANOEUVRE
+  OUVRIER_SPECIALISE
+  CHEF_EQUIPE
+  TECHNICIEN
+  AGENT_MAITRISE
+  INGENIEUR
+  AUTRE
+}
+
+model Ouvrier {
+  id             String               @id @default(uuid())
+  siteId         String
+  nom            String
+  prenom         String?
+  fonction       String?
+  qualification  QualificationOuvrier @default(MANOEUVRE)
+  tauxJournalier BigInt               @default(0)
+  dateEntree     DateTime             @db.Date
+  dateSortie     DateTime?            @db.Date
+  actif          Boolean              @default(true)
+  telephone      String?
+  notes          String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  site      Site      @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  pointages Pointage[]
+
+  @@index([siteId])
+  @@index([siteId, actif])
+}
+
+model Pointage {
+  id        String   @id @default(uuid())
+  ouvrierId String
+  siteId    String
+  date      DateTime @db.Date
+  present   Boolean  @default(true)
+  heures    Decimal  @default(8) @db.Decimal(4, 1)
+  notes     String?
+  createdAt DateTime @default(now())
+
+  ouvrier Ouvrier @relation(fields: [ouvrierId], references: [id], onDelete: Cascade)
+  site    Site    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([ouvrierId, date])
+  @@index([siteId, date])
+  @@index([ouvrierId])
 }
 
 model AuditLog {

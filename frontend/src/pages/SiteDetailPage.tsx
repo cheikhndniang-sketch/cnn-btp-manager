@@ -10,6 +10,7 @@ import { SousTraitanceTab } from '@/components/SousTraitanceTab';
 import { DocumentsTab } from '@/components/DocumentsTab';
 import { TSTab } from '@/components/TSTab';
 import { JournalTab } from '@/components/JournalTab';
+import { EffectifTab } from '@/components/EffectifTab';
 import { formatDate, formatFCFA } from '@/lib/format';
 import { exportRapportToPdf } from '@/lib/exportRapport';
 import { ROLE_LABELS, type Role, type SiteStatus } from '@/api/types';
@@ -23,6 +24,7 @@ const TABS = [
   { key: 'st', label: 'Sous-traitance', enabled: true },
   { key: 'docs', label: 'Documents', enabled: true },
   { key: 'journal', label: 'Journal', enabled: true },
+  { key: 'effectif', label: 'Effectif', enabled: true },
 ] as const;
 
 const STATUS_LABELS: Record<SiteStatus, string> = {
@@ -408,6 +410,8 @@ export function SiteDetailPage() {
             <DocumentsTab siteId={site.id} />
           ) : tab === 'journal' ? (
             <JournalTab siteId={site.id} />
+          ) : tab === 'effectif' ? (
+            <EffectifTab siteId={site.id} />
           ) : (
             <div className="card text-center py-16">
               <p className="text-slate-500">
