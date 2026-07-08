@@ -447,11 +447,13 @@ export const QUALIFICATION_LABELS: Record<QualificationOuvrier, string> = {
 export interface Ouvrier {
   id: string;
   siteId: string;
+  matricule: string | null;
   nom: string;
   prenom: string | null;
   fonction: string | null;
   qualification: QualificationOuvrier;
-  tauxJournalier: number;
+  salaireBase: number;    // Salaire mensuel brut FCFA
+  tauxJournalier: number; // alias rétrocompat = salaireBase
   dateEntree: string;
   dateSortie: string | null;
   actif: boolean;
@@ -468,21 +470,39 @@ export interface Pointage {
   date: string;
   present: boolean;
   heures: number;
+  heuresNuit: number;
+  jourFerie: boolean;
   notes: string | null;
   createdAt: string;
-  ouvrier: Pick<Ouvrier, 'id' | 'nom' | 'prenom' | 'fonction'>;
+  ouvrier: Pick<Ouvrier, 'id' | 'nom' | 'prenom' | 'fonction' | 'matricule'>;
 }
 
 export interface LigneResume {
   ouvrierId: string;
+  matricule: string | null;
   nom: string;
   prenom: string | null;
   fonction: string | null;
   qualification: QualificationOuvrier;
-  tauxJournalier: number;
+  salaireBase: number;
+  tauxHoraire: number;
   joursPresents: number;
   heuresTotales: number;
-  salaireHt: number;
+  heuresNormales: number;
+  heuresHs15: number;
+  heuresHs40: number;
+  heuresFerie: number;
+  heuresNuit: number;
+  heuresNuitFerie: number;
+  montantNormal: number;
+  montantHs15: number;
+  montantHs40: number;
+  montantFerie: number;
+  majorationNuit: number;
+  majorationNuitFerie: number;
+  totalBrut: number;
+  tauxJournalier: number; // rétrocompat
+  salaireHt: number;      // rétrocompat
 }
 
 export interface ResumeMensuel {

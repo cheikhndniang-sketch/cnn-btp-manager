@@ -18,6 +18,16 @@ export class UpsertPointageDto {
   heures?: number;
 
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(12)
+  heuresNuit?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  jourFerie?: boolean;
+
+  @IsOptional()
   @IsString()
   notes?: string;
 }

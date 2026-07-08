@@ -16,6 +16,10 @@ export class CreateOuvrierDto {
 
   @IsOptional()
   @IsString()
+  matricule?: string;
+
+  @IsOptional()
+  @IsString()
   prenom?: string;
 
   @IsOptional()
@@ -28,7 +32,7 @@ export class CreateOuvrierDto {
 
   @IsNumber()
   @Min(0)
-  tauxJournalier!: number;
+  salaireBase!: number;
 
   @IsDateString()
   dateEntree!: string;
@@ -53,6 +57,10 @@ export class UpdateOuvrierDto {
 
   @IsOptional()
   @IsString()
+  matricule?: string;
+
+  @IsOptional()
+  @IsString()
   prenom?: string;
 
   @IsOptional()
@@ -66,7 +74,7 @@ export class UpdateOuvrierDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
-  tauxJournalier?: number;
+  salaireBase?: number;
 
   @IsOptional()
   @IsDateString()

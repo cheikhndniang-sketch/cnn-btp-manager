@@ -310,13 +310,24 @@ export const avenantsApi = {
 
 export interface CreateOuvrierPayload {
   nom: string;
+  matricule?: string;
   prenom?: string;
   fonction?: string;
   qualification?: QualificationOuvrier;
-  tauxJournalier: number;
+  salaireBase: number;
   dateEntree: string;
   dateSortie?: string;
   telephone?: string;
+  notes?: string;
+}
+
+export interface UpsertPointagePayload {
+  ouvrierId: string;
+  date: string;
+  present?: boolean;
+  heures?: number;
+  heuresNuit?: number;
+  jourFerie?: boolean;
   notes?: string;
 }
 
@@ -333,7 +344,7 @@ export const effectifApi = {
     api.delete(`/sites/${siteId}/effectif/ouvriers/${id}`).then((r) => r.data),
   listPointages: (siteId: string, mois: string) =>
     api.get<Pointage[]>(`/sites/${siteId}/effectif/pointages`, { params: { mois } }).then((r) => r.data),
-  upsertPointage: (siteId: string, payload: { ouvrierId: string; date: string; present?: boolean; heures?: number; notes?: string }) =>
+  upsertPointage: (siteId: string, payload: UpsertPointagePayload) =>
     api.post<Pointage>(`/sites/${siteId}/effectif/pointages`, payload).then((r) => r.data),
   deletePointage: (siteId: string, id: string) =>
     api.delete(`/sites/${siteId}/effectif/pointages/${id}`).then((r) => r.data),

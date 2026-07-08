@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { effectifApi, type CreateOuvrierPayload } from '@/api/endpoints';
-import { QUALIFICATION_LABELS, type Ouvrier, type QualificationOuvrier } from '@/api/types';
+import { effectifApi, type CreateOuvrierPayload, type UpsertPointagePayload } from '@/api/endpoints';
+import { QUALIFICATION_LABELS, type Ouvrier, type Pointage, type QualificationOuvrier } from '@/api/types';
 import { formatFCFA } from '@/lib/format';
 
 const QUALIFICATIONS: QualificationOuvrier[] = [
@@ -25,10 +25,11 @@ function OuvrierForm({ siteId, initial, onClose }: OuvrierFormProps) {
   const qc = useQueryClient();
   const [form, setForm] = useState<CreateOuvrierPayload & { actif?: boolean }>({
     nom: initial?.nom ?? '',
+    matricule: initial?.matricule ?? '',
     prenom: initial?.prenom ?? '',
     fonction: initial?.fonction ?? '',
     qualification: initial?.qualification ?? 'MANOEUVRE',
-    tauxJournalier: initial?.tauxJournalier ?? 0,
+    salaireBase: initial?.salaireBase ?? 0,
     dateEntree: initial?.dateEntree?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
     dateSortie: initial?.dateSortie?.slice(0, 10) ?? '',
     telephone: initial?.telephone ?? '',
@@ -53,11 +54,13 @@ function OuvrierForm({ siteId, initial, onClose }: OuvrierFormProps) {
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
+  const tauxHoraire = form.salaireBase > 0 ? Math.round(form.salaireBase / 173.33) : 0;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto">
         <h2 className="text-base font-semibold text-navy mb-4">
-          {initial?.id ? 'Modifier l\'ouvrier' : 'Ajouter un ouvrier'}
+          {initial?.id ? 'Modifier le salarié' : 'Ajouter un salarié'}
         </h2>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -67,6 +70,14 @@ function OuvrierForm({ siteId, initial, onClose }: OuvrierFormProps) {
           <div>
             <label className="label">Prénom</label>
             <input className="input" value={form.prenom} onChange={set('prenom')} />
+          </div>
+          <div>
+            <label className="label">Matricule</label>
+            <input className="input" value={form.matricule} onChange={set('matricule')} placeholder="Ex: 2405, PST1…" />
+          </div>
+          <div>
+            <label className="label">Téléphone</label>
+            <input className="input" value={form.telephone} onChange={set('telephone')} />
           </div>
           <div>
             <label className="label">Fonction</label>
@@ -80,19 +91,21 @@ function OuvrierForm({ siteId, initial, onClose }: OuvrierFormProps) {
               ))}
             </select>
           </div>
-          <div>
-            <label className="label">Taux journalier (FCFA)</label>
+          <div className="col-span-2">
+            <label className="label">Salaire mensuel brut (FCFA)</label>
             <input
               className="input"
               type="number"
               min={0}
-              value={form.tauxJournalier}
-              onChange={(e) => setForm((f) => ({ ...f, tauxJournalier: Number(e.target.value) }))}
+              step={1000}
+              value={form.salaireBase}
+              onChange={(e) => setForm((f) => ({ ...f, salaireBase: Number(e.target.value) }))}
             />
-          </div>
-          <div>
-            <label className="label">Téléphone</label>
-            <input className="input" value={form.telephone} onChange={set('telephone')} />
+            {tauxHoraire > 0 && (
+              <p className="text-xs text-slate-400 mt-0.5">
+                → Taux horaire : {formatFCFA(tauxHoraire)} / h (base 173,33 h/mois)
+              </p>
+            )}
           </div>
           <div>
             <label className="label">Date d'entrée *</label>
@@ -135,18 +148,117 @@ function OuvrierForm({ siteId, initial, onClose }: OuvrierFormProps) {
   );
 }
 
+// ── Popover saisie heures d'un jour ──────────────────────────────────
+
+interface CellEditProps {
+  ouvrierId: string;
+  siteId: string;
+  date: string;
+  pointage?: Pointage;
+  onClose: () => void;
+}
+
+function CellEditPopover({ ouvrierId, siteId, date, pointage, onClose }: CellEditProps) {
+  const qc = useQueryClient();
+  const [heures, setHeures] = useState(pointage?.heures ?? 8);
+  const [heuresNuit, setHeuresNuit] = useState(pointage?.heuresNuit ?? 0);
+  const [jourFerie, setJourFerie] = useState(pointage?.jourFerie ?? false);
+  const mois = date.slice(0, 7);
+
+  const upsert = useMutation({
+    mutationFn: (payload: UpsertPointagePayload) => effectifApi.upsertPointage(siteId, payload),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['effectif-pointages', siteId, mois] });
+      void qc.invalidateQueries({ queryKey: ['effectif-resume', siteId] });
+      onClose();
+    },
+  });
+  const del = useMutation({
+    mutationFn: (id: string) => effectifApi.deletePointage(siteId, id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['effectif-pointages', siteId, mois] });
+      void qc.invalidateQueries({ queryKey: ['effectif-resume', siteId] });
+      onClose();
+    },
+  });
+
+  const save = () => {
+    if (heures <= 0) {
+      if (pointage?.id) del.mutate(pointage.id);
+      else onClose();
+      return;
+    }
+    upsert.mutate({ ouvrierId, date, present: true, heures, heuresNuit, jourFerie });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl p-4 w-60" onClick={(e) => e.stopPropagation()}>
+        <p className="text-xs font-semibold text-navy mb-3">{date}</p>
+        <div className="space-y-2">
+          <div>
+            <label className="label text-xs">Heures travaillées (0 = absent)</label>
+            <input
+              className="input text-sm"
+              type="number"
+              min={0}
+              max={24}
+              step={0.5}
+              value={heures}
+              onChange={(e) => setHeures(Number(e.target.value))}
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="label text-xs">Dont heures de nuit (22h–5h)</label>
+            <input
+              className="input text-sm"
+              type="number"
+              min={0}
+              max={Math.min(12, heures)}
+              step={0.5}
+              value={heuresNuit}
+              onChange={(e) => setHeuresNuit(Number(e.target.value))}
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={jourFerie}
+              onChange={(e) => setJourFerie(e.target.checked)}
+              className="w-4 h-4 accent-amber-500"
+            />
+            Dimanche / Jour férié (+60 %)
+          </label>
+        </div>
+        <div className="flex gap-2 mt-3 justify-end">
+          <button className="btn-secondary text-xs py-1" onClick={onClose}>Annuler</button>
+          <button
+            className="btn-primary text-xs py-1"
+            onClick={save}
+            disabled={upsert.isPending || del.isPending}
+          >
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Vue pointage mensuel ──────────────────────────────────────────────
 
 interface PointageViewProps {
   siteId: string;
   mois: string;
+  search: string;
 }
 
-function PointageView({ siteId, mois }: PointageViewProps) {
-  const qc = useQueryClient();
+function PointageView({ siteId, mois, search }: PointageViewProps) {
   const [year, month] = mois.split('-').map(Number);
   const daysInMonth = new Date(year, month, 0).getDate();
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  const [editing, setEditing] = useState<{ ouvrierId: string; date: string; pointage?: Pointage } | null>(null);
 
   const { data: ouvriers = [] } = useQuery({
     queryKey: ['effectif-ouvriers', siteId],
@@ -162,86 +274,115 @@ function PointageView({ siteId, mois }: PointageViewProps) {
     pointages.map((p) => [`${p.ouvrierId}-${p.date.slice(0, 10)}`, p]),
   );
 
-  const toggle = useMutation({
-    mutationFn: ({ ouvrierId, date, present, id }: { ouvrierId: string; date: string; present: boolean; id?: string }) => {
-      if (!present && id) return effectifApi.deletePointage(siteId, id);
-      return effectifApi.upsertPointage(siteId, { ouvrierId, date, present });
-    },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['effectif-pointages', siteId, mois] });
-      void qc.invalidateQueries({ queryKey: ['effectif-resume', siteId] });
-    },
-  });
+  const q = search.toLowerCase();
+  const filtered = ouvriers.filter((o) =>
+    !q ||
+    o.nom.toLowerCase().includes(q) ||
+    (o.prenom ?? '').toLowerCase().includes(q) ||
+    (o.matricule ?? '').toLowerCase().includes(q) ||
+    (o.fonction ?? '').toLowerCase().includes(q)
+  );
 
   if (ouvriers.length === 0) {
     return <p className="text-sm text-slate-400 text-center py-8">Aucun ouvrier actif. Ajoutez-en dans l'onglet Équipe.</p>;
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full text-xs border-collapse">
-        <thead>
-          <tr>
-            <th className="sticky left-0 bg-white text-left px-3 py-2 font-semibold text-navy min-w-[160px] border-b border-slate-200">
-              Ouvrier
-            </th>
-            {days.map((d) => {
-              const dayOfWeek = new Date(year, month - 1, d).getDay();
-              const isWe = dayOfWeek === 0 || dayOfWeek === 6;
+    <>
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-xs border-collapse">
+          <thead>
+            <tr>
+              <th className="sticky left-0 bg-white text-left px-3 py-2 font-semibold text-navy min-w-[180px] border-b border-slate-200">
+                Salarié
+              </th>
+              {days.map((d) => {
+                const dow = new Date(year, month - 1, d).getDay();
+                const isSun = dow === 0;
+                const isSat = dow === 6;
+                return (
+                  <th key={d} className={`px-0.5 py-2 text-center font-medium border-b border-slate-200 min-w-[30px] ${isSun ? 'bg-red-50 text-red-300' : isSat ? 'bg-slate-50 text-slate-400' : 'text-slate-500'}`}>
+                    <div>{d}</div>
+                    <div className="text-[9px] font-normal">{'DLMMJVS'[dow]}</div>
+                  </th>
+                );
+              })}
+              <th className="px-2 py-2 text-right font-semibold text-navy border-b border-slate-200 min-w-[48px]">H.tot</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((o) => {
+              let hTotal = 0;
               return (
-                <th key={d} className={`px-1 py-2 text-center font-medium border-b border-slate-200 min-w-[28px] ${isWe ? 'text-slate-300' : 'text-slate-500'}`}>
-                  {d}
-                </th>
+                <tr key={o.id} className="border-b border-slate-100 hover:bg-surface-0">
+                  <td className="sticky left-0 bg-white px-3 py-1.5">
+                    <div className="font-medium text-navy text-xs">{o.nom} {o.prenom ?? ''}</div>
+                    {o.matricule && <div className="text-[10px] text-cyan-dark font-mono">{o.matricule}</div>}
+                    {o.fonction && <div className="text-[10px] text-slate-400">{o.fonction}</div>}
+                  </td>
+                  {days.map((d) => {
+                    const dateStr = `${mois}-${String(d).padStart(2, '0')}`;
+                    const p = pointageMap.get(`${o.id}-${dateStr}`);
+                    const h = p?.present ? Number(p.heures) : 0;
+                    if (h > 0) hTotal += h;
+                    const dow = new Date(year, month - 1, d).getDay();
+                    const isSun = dow === 0;
+                    const isSat = dow === 6;
+                    const isFerie = p?.jourFerie ?? false;
+                    const hasNuit = (p?.heuresNuit ?? 0) > 0;
+
+                    let bg = isSun ? 'bg-red-50' : isSat ? 'bg-slate-50' : '';
+                    let cellClass = 'text-slate-200';
+                    if (h > 0) {
+                      if (isFerie) { bg = 'bg-amber-50'; cellClass = 'bg-amber-400 text-white'; }
+                      else         { cellClass = 'bg-green text-white'; }
+                    }
+
+                    return (
+                      <td key={d} className={`text-center px-0 py-0.5 ${bg}`}>
+                        <button
+                          onClick={() => setEditing({ ouvrierId: o.id, date: dateStr, pointage: p })}
+                          className={`w-7 h-7 rounded text-[10px] font-bold transition-colors relative ${cellClass}`}
+                          title={h > 0 ? `${h}h${isFerie ? ' (Ferie)' : ''}${hasNuit ? ` dont ${p?.heuresNuit}h nuit` : ''} — Cliquer pour modifier` : 'Absent — Cliquer pour saisir les heures'}
+                        >
+                          {h > 0 ? h : '·'}
+                          {hasNuit && h > 0 && <span className="absolute top-0 right-0 w-1.5 h-1.5 rounded-full bg-indigo-400" />}
+                        </button>
+                      </td>
+                    );
+                  })}
+                  <td className="text-right px-2 py-1.5 font-semibold text-navy tabular-nums">
+                    {hTotal > 0 ? `${hTotal}h` : '—'}
+                  </td>
+                </tr>
               );
             })}
-            <th className="px-3 py-2 text-right font-semibold text-navy border-b border-slate-200 min-w-[60px]">Jours</th>
-          </tr>
-        </thead>
-        <tbody>
-          {ouvriers.map((o) => {
-            let joursPresents = 0;
-            return (
-              <tr key={o.id} className="border-b border-slate-100 hover:bg-surface-0">
-                <td className="sticky left-0 bg-white px-3 py-1.5 font-medium text-navy">
-                  {o.nom} {o.prenom ?? ''}
-                  {o.fonction && <div className="text-xs font-normal text-slate-400">{o.fonction}</div>}
-                </td>
-                {days.map((d) => {
-                  const dateStr = `${mois}-${String(d).padStart(2, '0')}`;
-                  const p = pointageMap.get(`${o.id}-${dateStr}`);
-                  const present = p?.present ?? false;
-                  if (present) joursPresents++;
-                  const dayOfWeek = new Date(year, month - 1, d).getDay();
-                  const isWe = dayOfWeek === 0 || dayOfWeek === 6;
-                  return (
-                    <td key={d} className={`text-center px-0.5 ${isWe ? 'bg-slate-50' : ''}`}>
-                      <button
-                        onClick={() => toggle.mutate({ ouvrierId: o.id, date: dateStr, present: !present, id: p?.id })}
-                        className={`w-6 h-6 rounded text-xs font-bold transition-colors ${
-                          present
-                            ? 'bg-green text-white'
-                            : 'bg-slate-100 text-slate-300 hover:bg-slate-200'
-                        }`}
-                        title={present ? 'Présent — cliquer pour marquer absent' : 'Absent — cliquer pour marquer présent'}
-                      >
-                        {present ? '✓' : '·'}
-                      </button>
-                    </td>
-                  );
-                })}
-                <td className="text-right px-3 py-1.5 font-semibold text-navy">{joursPresents}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+          </tbody>
+        </table>
+      </div>
+      <div className="mt-2 flex gap-4 text-[10px] text-slate-400">
+        <span><span className="inline-block w-2.5 h-2.5 rounded bg-green mr-1" />Jour normal</span>
+        <span><span className="inline-block w-2.5 h-2.5 rounded bg-amber-400 mr-1" />Férie/Dim (+60%)</span>
+        <span><span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-400 mr-1" />Nuit (22h-5h)</span>
+      </div>
+
+      {editing && (
+        <CellEditPopover
+          siteId={siteId}
+          ouvrierId={editing.ouvrierId}
+          date={editing.date}
+          pointage={editing.pointage}
+          onClose={() => setEditing(null)}
+        />
+      )}
+    </>
   );
 }
 
-// ── Vue résumé salaires ───────────────────────────────────────────────
+// ── Vue résumé salaires sénégalais ────────────────────────────────────
 
-function ResumeView({ siteId, mois }: { siteId: string; mois: string }) {
+function ResumeView({ siteId, mois, search }: { siteId: string; mois: string; search: string }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
   const { data, isLoading } = useQuery({
     queryKey: ['effectif-resume', siteId, mois],
     queryFn: () => effectifApi.resume(siteId, mois),
@@ -252,40 +393,110 @@ function ResumeView({ siteId, mois }: { siteId: string; mois: string }) {
     return <p className="text-sm text-slate-400 text-center py-8">Aucune donnée de pointage pour ce mois.</p>;
   }
 
+  const q = search.toLowerCase();
+  const lignes = data.lignes.filter((l) =>
+    !q ||
+    l.nom.toLowerCase().includes(q) ||
+    (l.prenom ?? '').toLowerCase().includes(q) ||
+    (l.matricule ?? '').toLowerCase().includes(q) ||
+    (l.fonction ?? '').toLowerCase().includes(q)
+  );
+
+  const totalBrut = lignes.reduce((a, l) => a + l.totalBrut, 0);
+
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full text-sm">
+      <p className="text-xs text-slate-400 mb-3">
+        Calcul conforme au Décret sénégalais n° 70-184 — Taux horaire = Salaire base / 173,33 h
+      </p>
+      <table className="min-w-full text-xs">
         <thead>
-          <tr className="border-b border-slate-200">
-            <th className="text-left px-3 py-2 font-semibold text-navy">Ouvrier</th>
-            <th className="text-left px-3 py-2 font-semibold text-navy">Qualification</th>
-            <th className="text-right px-3 py-2 font-semibold text-navy">Taux/j</th>
-            <th className="text-right px-3 py-2 font-semibold text-navy">Jours</th>
-            <th className="text-right px-3 py-2 font-semibold text-navy">Heures</th>
-            <th className="text-right px-3 py-2 font-semibold text-navy">Salaire HT</th>
+          <tr className="border-b border-slate-200 bg-surface-0 text-slate-500">
+            <th className="text-left px-3 py-2 font-semibold text-navy">Salarié</th>
+            <th className="text-right px-2 py-2">S.base</th>
+            <th className="text-right px-2 py-2">Taux/h</th>
+            <th className="text-right px-2 py-2">J.prés.</th>
+            <th className="text-right px-2 py-2">H.norm</th>
+            <th className="text-right px-2 py-2 text-blue-600">HS +15%</th>
+            <th className="text-right px-2 py-2 text-orange-500">HS +40%</th>
+            <th className="text-right px-2 py-2 text-amber-600">H.férié</th>
+            <th className="text-right px-2 py-2 text-indigo-500">Nuit</th>
+            <th className="text-right px-3 py-2 font-semibold text-green">Total brut</th>
           </tr>
         </thead>
         <tbody>
-          {data.lignes.map((l) => (
-            <tr key={l.ouvrierId} className="border-b border-slate-100 hover:bg-surface-0">
-              <td className="px-3 py-2 font-medium text-navy">
-                {l.nom} {l.prenom ?? ''}
-                {l.fonction && <span className="ml-1 text-xs text-slate-400">({l.fonction})</span>}
-              </td>
-              <td className="px-3 py-2 text-slate-600">{QUALIFICATION_LABELS[l.qualification]}</td>
-              <td className="px-3 py-2 text-right text-slate-600">{formatFCFA(l.tauxJournalier)}</td>
-              <td className="px-3 py-2 text-right font-medium text-navy">{l.joursPresents}</td>
-              <td className="px-3 py-2 text-right text-slate-600">{l.heuresTotales}h</td>
-              <td className="px-3 py-2 text-right font-semibold text-green">{formatFCFA(l.salaireHt)}</td>
-            </tr>
-          ))}
+          {lignes.map((l) => {
+            const isOpen = expanded === l.ouvrierId;
+            const hasOt = l.heuresHs15 > 0 || l.heuresHs40 > 0 || l.heuresFerie > 0 || l.heuresNuit > 0;
+            return (
+              <>
+                <tr
+                  key={l.ouvrierId}
+                  className={`border-b border-slate-100 hover:bg-surface-0 cursor-pointer ${isOpen ? 'bg-slate-50' : ''}`}
+                  onClick={() => setExpanded(isOpen ? null : l.ouvrierId)}
+                >
+                  <td className="px-3 py-2">
+                    <div className="font-medium text-navy">{l.nom} {l.prenom ?? ''}</div>
+                    {l.matricule && <div className="text-[10px] font-mono text-cyan-dark">{l.matricule}</div>}
+                    {l.fonction && <div className="text-[10px] text-slate-400">{l.fonction}</div>}
+                  </td>
+                  <td className="px-2 py-2 text-right text-slate-500 tabular-nums">{l.salaireBase > 0 ? formatFCFA(l.salaireBase) : '—'}</td>
+                  <td className="px-2 py-2 text-right text-slate-500 tabular-nums">{l.tauxHoraire > 0 ? formatFCFA(l.tauxHoraire) : '—'}</td>
+                  <td className="px-2 py-2 text-right font-medium text-navy tabular-nums">{l.joursPresents}</td>
+                  <td className="px-2 py-2 text-right tabular-nums">{l.heuresNormales}h</td>
+                  <td className={`px-2 py-2 text-right tabular-nums ${l.heuresHs15 > 0 ? 'text-blue-600 font-medium' : 'text-slate-300'}`}>{l.heuresHs15 > 0 ? `${l.heuresHs15}h` : '—'}</td>
+                  <td className={`px-2 py-2 text-right tabular-nums ${l.heuresHs40 > 0 ? 'text-orange-500 font-medium' : 'text-slate-300'}`}>{l.heuresHs40 > 0 ? `${l.heuresHs40}h` : '—'}</td>
+                  <td className={`px-2 py-2 text-right tabular-nums ${l.heuresFerie > 0 ? 'text-amber-600 font-medium' : 'text-slate-300'}`}>{l.heuresFerie > 0 ? `${l.heuresFerie}h` : '—'}</td>
+                  <td className={`px-2 py-2 text-right tabular-nums ${l.heuresNuit > 0 || l.heuresNuitFerie > 0 ? 'text-indigo-500 font-medium' : 'text-slate-300'}`}>
+                    {l.heuresNuit + l.heuresNuitFerie > 0 ? `${l.heuresNuit + l.heuresNuitFerie}h` : '—'}
+                  </td>
+                  <td className="px-3 py-2 text-right font-bold text-green tabular-nums">
+                    {l.totalBrut > 0 ? formatFCFA(l.totalBrut) : '—'}
+                    {hasOt && <span className="ml-1 text-[9px] text-slate-400">▾</span>}
+                  </td>
+                </tr>
+                {isOpen && (
+                  <tr key={`${l.ouvrierId}-detail`} className="bg-slate-50 border-b border-slate-200">
+                    <td colSpan={10} className="px-6 py-3">
+                      <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-xs max-w-lg">
+                        <div className="text-slate-500">Heures normales ({l.heuresNormales}h × {formatFCFA(l.tauxHoraire)}/h)</div>
+                        <div className="text-right font-medium">{formatFCFA(l.montantNormal)}</div>
+                        {l.heuresHs15 > 0 && <>
+                          <div className="text-blue-600">HS 41e–48e ({l.heuresHs15}h × +15 %)</div>
+                          <div className="text-right font-medium text-blue-600">{formatFCFA(l.montantHs15)}</div>
+                        </>}
+                        {l.heuresHs40 > 0 && <>
+                          <div className="text-orange-500">HS &gt;48e ({l.heuresHs40}h × +40 %)</div>
+                          <div className="text-right font-medium text-orange-500">{formatFCFA(l.montantHs40)}</div>
+                        </>}
+                        {l.heuresFerie > 0 && <>
+                          <div className="text-amber-600">Jours fériés/dim. ({l.heuresFerie}h × +60 %)</div>
+                          <div className="text-right font-medium text-amber-600">{formatFCFA(l.montantFerie)}</div>
+                        </>}
+                        {l.heuresNuit > 0 && <>
+                          <div className="text-indigo-500">Maj. nuit semaine ({l.heuresNuit}h × +60 %)</div>
+                          <div className="text-right font-medium text-indigo-500">{formatFCFA(l.majorationNuit)}</div>
+                        </>}
+                        {l.heuresNuitFerie > 0 && <>
+                          <div className="text-indigo-700">Maj. nuit fériée ({l.heuresNuitFerie}h × +100 %)</div>
+                          <div className="text-right font-medium text-indigo-700">{formatFCFA(l.majorationNuitFerie)}</div>
+                        </>}
+                        <div className="font-semibold text-navy border-t border-slate-200 mt-1 pt-1">Total brut</div>
+                        <div className="text-right font-bold text-green border-t border-slate-200 mt-1 pt-1">{formatFCFA(l.totalBrut)}</div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </>
+            );
+          })}
         </tbody>
         <tfoot>
           <tr className="border-t-2 border-slate-300 bg-surface-0">
-            <td colSpan={3} className="px-3 py-2 font-semibold text-navy">Total masse salariale</td>
-            <td className="px-3 py-2 text-right font-bold text-navy">{data.totalJours} j</td>
-            <td />
-            <td className="px-3 py-2 text-right font-bold text-navy">{formatFCFA(data.totalSalaire)}</td>
+            <td colSpan={3} className="px-3 py-2 font-semibold text-navy">Masse salariale</td>
+            <td className="px-2 py-2 text-right font-bold text-navy tabular-nums">{data.totalJours} j</td>
+            <td colSpan={5} />
+            <td className="px-3 py-2 text-right font-bold text-green tabular-nums text-sm">{formatFCFA(totalBrut)}</td>
           </tr>
         </tfoot>
       </table>
@@ -307,6 +518,8 @@ export function EffectifTab({ siteId }: EffectifTabProps) {
   const [mois, setMois] = useState(currentMois);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Ouvrier | null>(null);
+  const [search, setSearch] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const { data: ouvriers = [], isLoading } = useQuery({
     queryKey: ['effectif-ouvriers', siteId],
@@ -318,19 +531,33 @@ export function EffectifTab({ siteId }: EffectifTabProps) {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['effectif-ouvriers', siteId] }),
   });
 
-  const actifs = ouvriers.filter((o) => o.actif);
+  const q = search.toLowerCase();
+  const actifs = ouvriers.filter((o) => o.actif && (
+    !q ||
+    o.nom.toLowerCase().includes(q) ||
+    (o.prenom ?? '').toLowerCase().includes(q) ||
+    (o.matricule ?? '').toLowerCase().includes(q) ||
+    (o.fonction ?? '').toLowerCase().includes(q)
+  ));
   const inactifs = ouvriers.filter((o) => !o.actif);
 
   const SUB_TABS: { key: SubTab; label: string }[] = [
-    { key: 'equipe', label: `Équipe (${actifs.length})` },
-    { key: 'pointage', label: 'Feuille de pointage' },
-    { key: 'salaires', label: 'Résumé salaires' },
+    { key: 'equipe', label: `Équipe (${ouvriers.filter(o => o.actif).length})` },
+    { key: 'pointage', label: 'Pointage' },
+    { key: 'salaires', label: 'Bulletin de paie' },
   ];
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && actifs.length === 1) {
+      setEditing(actifs[0]);
+      setShowForm(true);
+    }
+  };
 
   return (
     <div className="space-y-4">
-      {/* Sub-tabs */}
-      <div className="flex gap-1 border-b border-slate-200">
+      {/* Sub-tabs + contrôles */}
+      <div className="flex flex-wrap gap-1 border-b border-slate-200 items-end">
         {SUB_TABS.map((st) => (
           <button
             key={st.key}
@@ -344,21 +571,38 @@ export function EffectifTab({ siteId }: EffectifTabProps) {
             {st.label}
           </button>
         ))}
-        {/* Sélecteur mois (pointage + salaires) */}
-        {(subTab === 'pointage' || subTab === 'salaires') && (
-          <div className="ml-auto flex items-center gap-2 pb-1">
-            <label className="text-xs text-slate-500">Mois</label>
+        <div className="ml-auto flex items-center gap-2 pb-1">
+          {/* Recherche matricule/nom */}
+          <div className="relative">
+            <input
+              ref={searchRef}
+              type="text"
+              placeholder="Rechercher matricule, nom…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              className="text-sm border border-slate-200 rounded-lg pl-7 pr-3 py-1 w-48 focus:outline-none focus:ring-2 focus:ring-cyan/40"
+            />
+            <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+            </svg>
+            {search && (
+              <button className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-600" onClick={() => setSearch('')}>✕</button>
+            )}
+          </div>
+          {/* Sélecteur mois */}
+          {(subTab === 'pointage' || subTab === 'salaires') && (
             <input
               type="month"
               value={mois}
               onChange={(e) => setMois(e.target.value)}
               className="text-sm border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-cyan/40"
             />
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
-      {/* Contenu */}
+      {/* Équipe */}
       {subTab === 'equipe' && (
         <div className="card space-y-4">
           <div className="flex items-center justify-between">
@@ -370,7 +614,7 @@ export function EffectifTab({ siteId }: EffectifTabProps) {
 
           {isLoading ? (
             <p className="text-sm text-slate-400">Chargement…</p>
-          ) : actifs.length === 0 && inactifs.length === 0 ? (
+          ) : ouvriers.length === 0 ? (
             <p className="text-sm text-slate-400 text-center py-8">
               Aucun ouvrier enregistré. Cliquez sur "Ajouter" pour commencer.
             </p>
@@ -381,60 +625,67 @@ export function EffectifTab({ siteId }: EffectifTabProps) {
                   <table className="min-w-full text-sm">
                     <thead>
                       <tr className="border-b border-slate-200">
+                        <th className="text-left px-3 py-2 font-semibold text-navy">Matricule</th>
                         <th className="text-left px-3 py-2 font-semibold text-navy">Nom</th>
                         <th className="text-left px-3 py-2 font-semibold text-navy">Fonction</th>
-                        <th className="text-left px-3 py-2 font-semibold text-navy">Qualification</th>
-                        <th className="text-right px-3 py-2 font-semibold text-navy">Taux/jour</th>
-                        <th className="text-left px-3 py-2 font-semibold text-navy">Date entrée</th>
+                        <th className="text-right px-3 py-2 font-semibold text-navy">S.base/mois</th>
+                        <th className="text-right px-3 py-2 font-semibold text-navy">Taux/h</th>
                         <th className="text-left px-3 py-2 font-semibold text-navy">Tél.</th>
                         <th />
                       </tr>
                     </thead>
                     <tbody>
-                      {actifs.map((o) => (
-                        <tr key={o.id} className="border-b border-slate-100 hover:bg-surface-0">
-                          <td className="px-3 py-2 font-medium text-navy">
-                            {o.nom} {o.prenom ?? ''}
-                          </td>
-                          <td className="px-3 py-2 text-slate-600">{o.fonction ?? '—'}</td>
-                          <td className="px-3 py-2 text-slate-600">{QUALIFICATION_LABELS[o.qualification]}</td>
-                          <td className="px-3 py-2 text-right font-medium text-navy">{formatFCFA(o.tauxJournalier)}</td>
-                          <td className="px-3 py-2 text-slate-500">{o.dateEntree.slice(0, 10)}</td>
-                          <td className="px-3 py-2 text-slate-500">{o.telephone ?? '—'}</td>
-                          <td className="px-3 py-2 text-right">
-                            <button
-                              className="text-xs text-cyan-dark hover:underline mr-3"
-                              onClick={() => { setEditing(o); setShowForm(true); }}
-                            >
-                              Modifier
-                            </button>
-                            <button
-                              className="text-xs text-red hover:underline"
-                              onClick={() => { if (confirm(`Supprimer ${o.nom} ?`)) removeMutation.mutate(o.id); }}
-                            >
-                              Suppr.
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {actifs.map((o) => {
+                        const th = o.salaireBase > 0 ? Math.round(o.salaireBase / 173.33) : 0;
+                        return (
+                          <tr key={o.id} className="border-b border-slate-100 hover:bg-surface-0">
+                            <td className="px-3 py-2 font-mono text-xs text-cyan-dark">{o.matricule ?? '—'}</td>
+                            <td className="px-3 py-2 font-medium text-navy">
+                              {o.nom} {o.prenom ?? ''}
+                              <div className="text-xs font-normal text-slate-400">{QUALIFICATION_LABELS[o.qualification]}</div>
+                            </td>
+                            <td className="px-3 py-2 text-slate-600">{o.fonction ?? '—'}</td>
+                            <td className="px-3 py-2 text-right font-medium text-navy">{o.salaireBase > 0 ? formatFCFA(o.salaireBase) : '—'}</td>
+                            <td className="px-3 py-2 text-right text-slate-500">{th > 0 ? formatFCFA(th) : '—'}</td>
+                            <td className="px-3 py-2 text-slate-500">{o.telephone ?? '—'}</td>
+                            <td className="px-3 py-2 text-right">
+                              <button
+                                className="text-xs text-cyan-dark hover:underline mr-3"
+                                onClick={() => { setEditing(o); setShowForm(true); }}
+                              >
+                                Modifier
+                              </button>
+                              <button
+                                className="text-xs text-red hover:underline"
+                                onClick={() => { if (confirm(`Supprimer ${o.nom} ?`)) removeMutation.mutate(o.id); }}
+                              >
+                                Suppr.
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
               )}
+              {actifs.length === 0 && search && (
+                <p className="text-sm text-slate-400 text-center py-4">Aucun résultat pour « {search} »</p>
+              )}
 
-              {inactifs.length > 0 && (
+              {inactifs.length > 0 && !search && (
                 <details className="text-sm">
                   <summary className="cursor-pointer text-slate-500 hover:text-navy py-1">
-                    {inactifs.length} ouvrier{inactifs.length > 1 ? 's' : ''} inactif{inactifs.length > 1 ? 's' : ''}
+                    {inactifs.length} inactif{inactifs.length > 1 ? 's' : ''}
                   </summary>
                   <ul className="mt-2 space-y-1 pl-2">
                     {inactifs.map((o) => (
                       <li key={o.id} className="text-slate-400 flex items-center justify-between py-1 border-b border-slate-100">
-                        <span>{o.nom} {o.prenom ?? ''} — {o.fonction ?? 'Sans fonction'}</span>
-                        <button
-                          className="text-xs text-cyan-dark hover:underline"
-                          onClick={() => { setEditing(o); setShowForm(true); }}
-                        >
+                        <span>
+                          {o.matricule && <span className="font-mono text-xs text-cyan-dark mr-2">{o.matricule}</span>}
+                          {o.nom} {o.prenom ?? ''} — {o.fonction ?? 'Sans fonction'}
+                        </span>
+                        <button className="text-xs text-cyan-dark hover:underline" onClick={() => { setEditing(o); setShowForm(true); }}>
                           Modifier
                         </button>
                       </li>
@@ -447,18 +698,21 @@ export function EffectifTab({ siteId }: EffectifTabProps) {
         </div>
       )}
 
+      {/* Pointage */}
       {subTab === 'pointage' && (
         <div className="card">
           <p className="text-xs text-slate-400 mb-3">
-            Cliquez sur une case pour marquer présent (vert ✓) ou absent (gris ·).
+            Cliquez sur une case pour saisir les heures (0 = absent, &gt;0 = présent).
+            Case verte = jour normal, orange = dimanche/férié, point violet = heures de nuit.
           </p>
-          <PointageView siteId={siteId} mois={mois} />
+          <PointageView siteId={siteId} mois={mois} search={search} />
         </div>
       )}
 
+      {/* Bulletin de paie */}
       {subTab === 'salaires' && (
         <div className="card">
-          <ResumeView siteId={siteId} mois={mois} />
+          <ResumeView siteId={siteId} mois={mois} search={search} />
         </div>
       )}
 
