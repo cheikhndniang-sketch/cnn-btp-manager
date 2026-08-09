@@ -242,6 +242,8 @@ model Document {
   taille      Int
   contenu     Bytes
   description String?
+  latitude    Float?
+  longitude   Float?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
@@ -427,7 +429,9 @@ model Ouvrier {
   prenom        String?
   fonction      String?
   qualification QualificationOuvrier @default(MANOEUVRE)
-  salaireBase   BigInt               @default(0) // Salaire mensuel brut FCFA
+  salaireBase    BigInt               @default(0) // Salaire mensuel brut FCFA
+  tauxPanier     Int                  @default(0) // Prime panier FCFA/jour
+  tauxTransport  Int                  @default(0) // Prime transport FCFA/jour
   dateEntree    DateTime             @db.Date
   dateSortie    DateTime?            @db.Date
   actif         Boolean              @default(true)

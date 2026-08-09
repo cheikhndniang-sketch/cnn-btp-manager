@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { documentsApi } from '@/api/endpoints';
+import { enqueuePhoto, syncPhotos } from '@/lib/photoQueue';
 import { useAuth } from '@/hooks/useAuth';
 import {
   DOC_CATEGORIE_LABELS,
@@ -156,6 +157,17 @@ export function DocumentsTab({ siteId }: Props) {
                     {doc.description && (
                       <div className="text-xs text-slate-400 truncate max-w-xs">{doc.description}</div>
                     )}
+                    {doc.latitude != null && doc.longitude != null && (
+                      <a
+                        href={`https://www.google.com/maps?q=${doc.latitude},${doc.longitude}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-cyan-dark hover:underline inline-flex items-center gap-0.5 mt-0.5"
+                        title="Voir la position sur la carte"
+                      >
+                        📍 {doc.latitude.toFixed(5)}, {doc.longitude.toFixed(5)}
+                      </a>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${CAT_BADGE[doc.categorie]}`}>
@@ -221,50 +233,76 @@ interface UploadDialogProps {
   onUploaded: () => void;
 }
 
+/** Capture la position GPS (best-effort, non bloquant). */
+function getPosition(): Promise<{ lat: number; lng: number } | null> {
+  if (!('geolocation' in navigator)) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
+    );
+  });
+}
+
 function UploadDialog({ siteId, onClose, onUploaded }: UploadDialogProps) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [categorie, setCategorie] = useState<DocCategorie>('AUTRE');
+  const [categorie, setCategorie] = useState<DocCategorie>('PHOTO');
   const [description, setDescription] = useState('');
+  const [geoloc, setGeoloc] = useState(true);
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
 
-  const uploadMut = useMutation({
-    mutationFn: (fd: FormData) => documentsApi.upload(siteId, fd),
-    onSuccess: () => onUploaded(),
-    onError: (e: unknown) => {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setError(msg ?? 'Erreur lors de l\'envoi');
-    },
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const file = fileRef.current?.files?.[0];
     if (!file) { setError('Sélectionnez un fichier'); return; }
+    if (file.size > 15 * 1024 * 1024) { setError('Fichier trop volumineux (max 15 Mo)'); return; }
     setError('');
-    const fd = new FormData();
-    fd.append('file', file);
-    fd.append('categorie', categorie);
-    if (description.trim()) fd.append('description', description.trim());
-    uploadMut.mutate(fd);
+    setBusy(true);
+    try {
+      let latitude: number | undefined;
+      let longitude: number | undefined;
+      if (geoloc) {
+        const pos = await getPosition();
+        if (pos) { latitude = pos.lat; longitude = pos.lng; }
+      }
+      // File d'attente hors-ligne (IndexedDB) → envoi immédiat si en ligne.
+      await enqueuePhoto({
+        siteId,
+        nom: file.name,
+        mimetype: file.type || 'application/octet-stream',
+        categorie,
+        description: description.trim() || undefined,
+        latitude,
+        longitude,
+        blob: file,
+      });
+      await syncPhotos();
+      onUploaded();
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="font-semibold text-navy text-lg">Ajouter un document</h2>
+          <h2 className="font-semibold text-navy text-lg">Ajouter un document / photo</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">&times;</button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Fichier</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Fichier / photo</label>
             <input
               ref={fileRef}
               type="file"
+              accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
               className="block w-full text-sm text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:bg-navy file:text-white hover:file:bg-navy/90 cursor-pointer"
             />
-            <p className="text-xs text-slate-400 mt-1">Max 15 Mo</p>
+            <p className="text-xs text-slate-400 mt-1">Max 15 Mo — sur mobile, ouvrez l'appareil photo</p>
           </div>
 
           <div>
@@ -291,14 +329,29 @@ function UploadDialog({ siteId, onClose, onUploaded }: UploadDialogProps) {
             />
           </div>
 
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={geoloc}
+              onChange={(e) => setGeoloc(e.target.checked)}
+              className="w-4 h-4 accent-cyan"
+            />
+            📍 Géolocaliser (position GPS de la prise de vue)
+          </label>
+
+          <p className="text-xs text-slate-400">
+            Fonctionne hors-ligne : la photo est mise en file d'attente et
+            synchronisée automatiquement au retour du réseau.
+          </p>
+
           {error && <p className="text-sm text-red">{error}</p>}
 
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="btn-secondary text-sm">
               Annuler
             </button>
-            <button type="submit" disabled={uploadMut.isPending} className="btn-primary text-sm">
-              {uploadMut.isPending ? 'Envoi…' : 'Envoyer'}
+            <button type="submit" disabled={busy} className="btn-primary text-sm">
+              {busy ? 'Enregistrement…' : 'Enregistrer'}
             </button>
           </div>
         </form>

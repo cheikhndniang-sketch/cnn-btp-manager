@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
 import { DocCategorie } from '@prisma/client';
 
 export class UploadDocumentDto {
@@ -9,4 +9,17 @@ export class UploadDocumentDto {
   @IsString()
   @IsOptional()
   description?: string;
+
+  // Géolocalisation optionnelle (photos terrain)
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  @IsOptional()
+  latitude?: number;
+
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  @IsOptional()
+  longitude?: number;
 }

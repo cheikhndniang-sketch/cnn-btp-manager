@@ -315,6 +315,8 @@ export interface CreateOuvrierPayload {
   fonction?: string;
   qualification?: QualificationOuvrier;
   salaireBase: number;
+  tauxPanier?: number;
+  tauxTransport?: number;
   dateEntree: string;
   dateSortie?: string;
   telephone?: string;

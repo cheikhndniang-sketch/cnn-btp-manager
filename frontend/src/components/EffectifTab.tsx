@@ -1,8 +1,14 @@
 import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { effectifApi, type CreateOuvrierPayload, type UpsertPointagePayload } from '@/api/endpoints';
+import { effectifApi, type CreateOuvrierPayload } from '@/api/endpoints';
 import { QUALIFICATION_LABELS, type Ouvrier, type Pointage, type QualificationOuvrier } from '@/api/types';
 import { formatFCFA } from '@/lib/format';
+import {
+  MUT_POINTAGE_UPSERT,
+  MUT_POINTAGE_DELETE,
+  type PointageUpsertVars,
+  type PointageDeleteVars,
+} from '@/lib/offline';
 
 const QUALIFICATIONS: QualificationOuvrier[] = [
   'MANOEUVRE', 'OUVRIER_SPECIALISE', 'CHEF_EQUIPE',
@@ -30,6 +36,8 @@ function OuvrierForm({ siteId, initial, onClose }: OuvrierFormProps) {
     fonction: initial?.fonction ?? '',
     qualification: initial?.qualification ?? 'MANOEUVRE',
     salaireBase: initial?.salaireBase ?? 0,
+    tauxPanier: initial?.tauxPanier ?? 0,
+    tauxTransport: initial?.tauxTransport ?? 0,
     dateEntree: initial?.dateEntree?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
     dateSortie: initial?.dateSortie?.slice(0, 10) ?? '',
     telephone: initial?.telephone ?? '',
@@ -108,6 +116,30 @@ function OuvrierForm({ siteId, initial, onClose }: OuvrierFormProps) {
             )}
           </div>
           <div>
+            <label className="label">Prime panier (FCFA/jour)</label>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              step={500}
+              value={form.tauxPanier}
+              onChange={(e) => setForm((f) => ({ ...f, tauxPanier: Number(e.target.value) }))}
+              placeholder="0 ou 1000"
+            />
+          </div>
+          <div>
+            <label className="label">Prime transport (FCFA/jour)</label>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              step={500}
+              value={form.tauxTransport}
+              onChange={(e) => setForm((f) => ({ ...f, tauxTransport: Number(e.target.value) }))}
+              placeholder="0 ou 1000"
+            />
+          </div>
+          <div>
             <label className="label">Date d'entrée *</label>
             <input className="input" type="date" value={form.dateEntree} onChange={set('dateEntree')} required />
           </div>
@@ -154,41 +186,34 @@ interface CellEditProps {
   ouvrierId: string;
   siteId: string;
   date: string;
+  mois: string;
   pointage?: Pointage;
   onClose: () => void;
 }
 
-function CellEditPopover({ ouvrierId, siteId, date, pointage, onClose }: CellEditProps) {
-  const qc = useQueryClient();
+function CellEditPopover({ ouvrierId, siteId, date, mois, pointage, onClose }: CellEditProps) {
   const [heures, setHeures] = useState(pointage?.heures ?? 8);
   const [heuresNuit, setHeuresNuit] = useState(pointage?.heuresNuit ?? 0);
   const [jourFerie, setJourFerie] = useState(pointage?.jourFerie ?? false);
-  const mois = date.slice(0, 7);
 
-  const upsert = useMutation({
-    mutationFn: (payload: UpsertPointagePayload) => effectifApi.upsertPointage(siteId, payload),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['effectif-pointages', siteId, mois] });
-      void qc.invalidateQueries({ queryKey: ['effectif-resume', siteId] });
-      onClose();
-    },
+  // Mutations résumables (hors-ligne) — logique dans lib/offline.ts.
+  const upsert = useMutation<Pointage, unknown, PointageUpsertVars>({
+    mutationKey: MUT_POINTAGE_UPSERT,
   });
-  const del = useMutation({
-    mutationFn: (id: string) => effectifApi.deletePointage(siteId, id),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['effectif-pointages', siteId, mois] });
-      void qc.invalidateQueries({ queryKey: ['effectif-resume', siteId] });
-      onClose();
-    },
+  const del = useMutation<unknown, unknown, PointageDeleteVars>({
+    mutationKey: MUT_POINTAGE_DELETE,
   });
 
+  // Fermeture immédiate : la saisie est appliquée de façon optimiste puis
+  // synchronisée en arrière-plan (ou mise en file d'attente si hors-ligne).
   const save = () => {
     if (heures <= 0) {
-      if (pointage?.id) del.mutate(pointage.id);
-      else onClose();
+      if (pointage?.id) del.mutate({ siteId, mois, id: pointage.id, ouvrierId, date });
+      onClose();
       return;
     }
-    upsert.mutate({ ouvrierId, date, present: true, heures, heuresNuit, jourFerie });
+    upsert.mutate({ siteId, mois, payload: { ouvrierId, date, present: true, heures, heuresNuit, jourFerie } });
+    onClose();
   };
 
   return (
@@ -256,9 +281,27 @@ interface PointageViewProps {
 
 function PointageView({ siteId, mois, search }: PointageViewProps) {
   const [year, month] = mois.split('-').map(Number);
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-  const [editing, setEditing] = useState<{ ouvrierId: string; date: string; pointage?: Pointage } | null>(null);
+  const prevYear   = month === 1 ? year - 1 : year;
+  const prevMonth  = month === 1 ? 12 : month - 1;
+  const daysInPrev = new Date(prevYear, prevMonth, 0).getDate();
+
+  // Période 21 du mois précédent → 20 du mois courant
+  type PDay = { dateStr: string; day: number; month: number; year: number };
+  const periodDays: PDay[] = [];
+  for (let d = 21; d <= daysInPrev; d++) {
+    periodDays.push({
+      dateStr: `${prevYear}-${String(prevMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
+      day: d, month: prevMonth, year: prevYear,
+    });
+  }
+  for (let d = 1; d <= 20; d++) {
+    periodDays.push({
+      dateStr: `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
+      day: d, month, year,
+    });
+  }
+
+  const [editing, setEditing] = useState<{ ouvrierId: string; date: string; mois: string; pointage?: Pointage } | null>(null);
 
   const { data: ouvriers = [] } = useQuery({
     queryKey: ['effectif-ouvriers', siteId],
@@ -292,17 +335,29 @@ function PointageView({ siteId, mois, search }: PointageViewProps) {
       <div className="overflow-x-auto">
         <table className="min-w-full text-xs border-collapse">
           <thead>
+            {/* Ligne d'entête des mois */}
+            <tr className="text-[9px] text-slate-400">
+              <th className="sticky left-0 bg-white" />
+              <th colSpan={daysInPrev - 20} className="text-center font-medium pb-0 border-b border-slate-100">
+                {new Date(prevYear, prevMonth - 1, 1).toLocaleDateString('fr-FR', { month: 'short' }).toUpperCase()} {prevYear !== year ? prevYear : ''}
+              </th>
+              <th colSpan={20} className="text-center font-medium pb-0 border-b border-slate-100 border-l-2 border-l-cyan/40">
+                {new Date(year, month - 1, 1).toLocaleDateString('fr-FR', { month: 'short' }).toUpperCase()} {year}
+              </th>
+              <th />
+            </tr>
             <tr>
               <th className="sticky left-0 bg-white text-left px-3 py-2 font-semibold text-navy min-w-[180px] border-b border-slate-200">
                 Salarié
               </th>
-              {days.map((d) => {
-                const dow = new Date(year, month - 1, d).getDay();
+              {periodDays.map(({ dateStr, day, month: m, year: y }) => {
+                const dow = new Date(y, m - 1, day).getDay();
                 const isSun = dow === 0;
                 const isSat = dow === 6;
+                const isFirst = m === month && day === 1;
                 return (
-                  <th key={d} className={`px-0.5 py-2 text-center font-medium border-b border-slate-200 min-w-[30px] ${isSun ? 'bg-red-50 text-red-300' : isSat ? 'bg-slate-50 text-slate-400' : 'text-slate-500'}`}>
-                    <div>{d}</div>
+                  <th key={dateStr} className={`px-0.5 py-2 text-center font-medium border-b border-slate-200 min-w-[30px] ${isFirst ? 'border-l-2 border-l-cyan/40' : ''} ${isSun ? 'bg-red-50 text-red-300' : isSat ? 'bg-slate-50 text-slate-400' : 'text-slate-500'}`}>
+                    <div>{day}</div>
                     <div className="text-[9px] font-normal">{'DLMMJVS'[dow]}</div>
                   </th>
                 );
@@ -320,16 +375,16 @@ function PointageView({ siteId, mois, search }: PointageViewProps) {
                     {o.matricule && <div className="text-[10px] text-cyan-dark font-mono">{o.matricule}</div>}
                     {o.fonction && <div className="text-[10px] text-slate-400">{o.fonction}</div>}
                   </td>
-                  {days.map((d) => {
-                    const dateStr = `${mois}-${String(d).padStart(2, '0')}`;
+                  {periodDays.map(({ dateStr, day, month: m, year: y }) => {
                     const p = pointageMap.get(`${o.id}-${dateStr}`);
                     const h = p?.present ? Number(p.heures) : 0;
                     if (h > 0) hTotal += h;
-                    const dow = new Date(year, month - 1, d).getDay();
+                    const dow = new Date(y, m - 1, day).getDay();
                     const isSun = dow === 0;
                     const isSat = dow === 6;
                     const isFerie = p?.jourFerie ?? false;
                     const hasNuit = (p?.heuresNuit ?? 0) > 0;
+                    const isFirst = m === month && day === 1;
 
                     let bg = isSun ? 'bg-red-50' : isSat ? 'bg-slate-50' : '';
                     let cellClass = 'text-slate-200';
@@ -339,9 +394,9 @@ function PointageView({ siteId, mois, search }: PointageViewProps) {
                     }
 
                     return (
-                      <td key={d} className={`text-center px-0 py-0.5 ${bg}`}>
+                      <td key={dateStr} className={`text-center px-0 py-0.5 ${bg} ${isFirst ? 'border-l-2 border-l-cyan/40' : ''}`}>
                         <button
-                          onClick={() => setEditing({ ouvrierId: o.id, date: dateStr, pointage: p })}
+                          onClick={() => setEditing({ ouvrierId: o.id, date: dateStr, mois, pointage: p })}
                           className={`w-7 h-7 rounded text-[10px] font-bold transition-colors relative ${cellClass}`}
                           title={h > 0 ? `${h}h${isFerie ? ' (Ferie)' : ''}${hasNuit ? ` dont ${p?.heuresNuit}h nuit` : ''} — Cliquer pour modifier` : 'Absent — Cliquer pour saisir les heures'}
                         >
@@ -371,6 +426,7 @@ function PointageView({ siteId, mois, search }: PointageViewProps) {
           siteId={siteId}
           ouvrierId={editing.ouvrierId}
           date={editing.date}
+          mois={editing.mois}
           pointage={editing.pointage}
           onClose={() => setEditing(null)}
         />
@@ -402,12 +458,22 @@ function ResumeView({ siteId, mois, search }: { siteId: string; mois: string; se
     (l.fonction ?? '').toLowerCase().includes(q)
   );
 
-  const totalBrut = lignes.reduce((a, l) => a + l.totalBrut, 0);
+  const totalBrut             = lignes.reduce((a, l) => a + l.totalBrut, 0);
+  const totalSalaireNet        = lignes.reduce((a, l) => a + l.salaireNet, 0);
+  const totalChargesPatronales = lignes.reduce((a, l) => a + l.totalChargesPatronales, 0);
+  const totalCoutEmployeur     = lignes.reduce((a, l) => a + l.coutTotalEmployeur, 0);
 
   return (
     <div className="overflow-x-auto">
       <p className="text-xs text-slate-400 mb-3">
-        Calcul conforme au Décret sénégalais n° 70-184 — Taux horaire = Salaire base / 173,33 h
+        {(() => {
+          const [y, m] = mois.split('-').map(Number);
+          const pY = m === 1 ? y - 1 : y;
+          const pM = m === 1 ? 12 : m - 1;
+          const label = (yr: number, mo: number, d: number) =>
+            `${d} ${new Date(yr, mo - 1, 1).toLocaleDateString('fr-FR', { month: 'long' })} ${yr}`;
+          return `Période du ${label(pY, pM, 21)} au ${label(y, m, 20)} — Décret n° 70-184 — Taux = Salaire / 173,33 h`;
+        })()}
       </p>
       <table className="min-w-full text-xs">
         <thead>
@@ -421,13 +487,15 @@ function ResumeView({ siteId, mois, search }: { siteId: string; mois: string; se
             <th className="text-right px-2 py-2 text-orange-500">HS +40%</th>
             <th className="text-right px-2 py-2 text-amber-600">H.férié</th>
             <th className="text-right px-2 py-2 text-indigo-500">Nuit</th>
+            <th className="text-right px-2 py-2 text-slate-500">Primes</th>
             <th className="text-right px-3 py-2 font-semibold text-green">Total brut</th>
           </tr>
         </thead>
         <tbody>
           {lignes.map((l) => {
             const isOpen = expanded === l.ouvrierId;
-            const hasOt = l.heuresHs15 > 0 || l.heuresHs40 > 0 || l.heuresFerie > 0 || l.heuresNuit > 0;
+            const totalPrimes = (l.primePanier ?? 0) + (l.primeTransport ?? 0);
+            const hasOt = l.heuresHs15 > 0 || l.heuresHs40 > 0 || l.heuresFerie > 0 || l.heuresNuit > 0 || totalPrimes > 0;
             return (
               <>
                 <tr
@@ -441,7 +509,7 @@ function ResumeView({ siteId, mois, search }: { siteId: string; mois: string; se
                     {l.fonction && <div className="text-[10px] text-slate-400">{l.fonction}</div>}
                   </td>
                   <td className="px-2 py-2 text-right text-slate-500 tabular-nums">{l.salaireBase > 0 ? formatFCFA(l.salaireBase) : '—'}</td>
-                  <td className="px-2 py-2 text-right text-slate-500 tabular-nums">{l.tauxHoraire > 0 ? formatFCFA(l.tauxHoraire) : '—'}</td>
+                  <td className="px-2 py-2 text-right text-slate-500 tabular-nums">{l.tauxHoraire > 0 ? `${l.tauxHoraire.toFixed(4)} F` : '—'}</td>
                   <td className="px-2 py-2 text-right font-medium text-navy tabular-nums">{l.joursPresents}</td>
                   <td className="px-2 py-2 text-right tabular-nums">{l.heuresNormales}h</td>
                   <td className={`px-2 py-2 text-right tabular-nums ${l.heuresHs15 > 0 ? 'text-blue-600 font-medium' : 'text-slate-300'}`}>{l.heuresHs15 > 0 ? `${l.heuresHs15}h` : '—'}</td>
@@ -450,6 +518,9 @@ function ResumeView({ siteId, mois, search }: { siteId: string; mois: string; se
                   <td className={`px-2 py-2 text-right tabular-nums ${l.heuresNuit > 0 || l.heuresNuitFerie > 0 ? 'text-indigo-500 font-medium' : 'text-slate-300'}`}>
                     {l.heuresNuit + l.heuresNuitFerie > 0 ? `${l.heuresNuit + l.heuresNuitFerie}h` : '—'}
                   </td>
+                  <td className={`px-2 py-2 text-right tabular-nums ${totalPrimes > 0 ? 'text-teal-600 font-medium' : 'text-slate-300'}`}>
+                    {totalPrimes > 0 ? formatFCFA(totalPrimes) : '—'}
+                  </td>
                   <td className="px-3 py-2 text-right font-bold text-green tabular-nums">
                     {l.totalBrut > 0 ? formatFCFA(l.totalBrut) : '—'}
                     {hasOt && <span className="ml-1 text-[9px] text-slate-400">▾</span>}
@@ -457,32 +528,84 @@ function ResumeView({ siteId, mois, search }: { siteId: string; mois: string; se
                 </tr>
                 {isOpen && (
                   <tr key={`${l.ouvrierId}-detail`} className="bg-slate-50 border-b border-slate-200">
-                    <td colSpan={10} className="px-6 py-3">
+                    <td colSpan={11} className="px-6 py-3">
                       <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-xs max-w-lg">
-                        <div className="text-slate-500">Heures normales ({l.heuresNormales}h × {formatFCFA(l.tauxHoraire)}/h)</div>
-                        <div className="text-right font-medium">{formatFCFA(l.montantNormal)}</div>
-                        {l.heuresHs15 > 0 && <>
-                          <div className="text-blue-600">HS 41e–48e ({l.heuresHs15}h × +15 %)</div>
-                          <div className="text-right font-medium text-blue-600">{formatFCFA(l.montantHs15)}</div>
+                        {/* Taux unitaires arrondis à l'FCFA (calculés depuis tauxHoraire à 4 déc.) */}
+                        {(() => {
+                          const fmt4 = (n: number) => n.toFixed(4);
+                          const th    = fmt4(l.tauxHoraire);
+                          const th15  = fmt4(l.tauxHoraire * 1.15);
+                          const th40  = fmt4(l.tauxHoraire * 1.40);
+                          const thFe  = fmt4(l.tauxHoraire * 1.60);
+                          const thN   = fmt4(l.tauxHoraire * 0.60);
+                          const thNFe = fmt4(l.tauxHoraire * 1.00);
+                          return <>
+                            <div className="text-slate-500">H. normales ({l.heuresNormales}h × {th} F/h)</div>
+                            <div className="text-right font-medium">{formatFCFA(l.montantNormal)}</div>
+                            {l.heuresHs15 > 0 && <>
+                              <div className="text-blue-600">HS 41e–48e ({l.heuresHs15}h × {th15} F/h · +15 %)</div>
+                              <div className="text-right font-medium text-blue-600">{formatFCFA(l.montantHs15)}</div>
+                            </>}
+                            {l.heuresHs40 > 0 && <>
+                              <div className="text-orange-500">HS &gt;48e ({l.heuresHs40}h × {th40} F/h · +40 %)</div>
+                              <div className="text-right font-medium text-orange-500">{formatFCFA(l.montantHs40)}</div>
+                            </>}
+                            {l.heuresFerie > 0 && <>
+                              <div className="text-amber-600">Fériés/dim. ({l.heuresFerie}h × {thFe} F/h · +60 %)</div>
+                              <div className="text-right font-medium text-amber-600">{formatFCFA(l.montantFerie)}</div>
+                            </>}
+                            {l.heuresNuit > 0 && <>
+                              <div className="text-indigo-500">Suppl. nuit semaine ({l.heuresNuit}h × {thN} F/h · +60 %)</div>
+                              <div className="text-right font-medium text-indigo-500">{formatFCFA(l.majorationNuit)}</div>
+                            </>}
+                            {l.heuresNuitFerie > 0 && <>
+                              <div className="text-indigo-700">Suppl. nuit fériée ({l.heuresNuitFerie}h × {thNFe} F/h · +100 %)</div>
+                              <div className="text-right font-medium text-indigo-700">{formatFCFA(l.majorationNuitFerie)}</div>
+                            </>}
+                          </>;
+                        })()}
+                        {(l.primePanier ?? 0) > 0 && <>
+                          <div className="text-teal-600">Prime panier — jours ≥11h ({l.joursAvecPanier}j × {formatFCFA(l.tauxPanier)}/j)</div>
+                          <div className="text-right font-medium text-teal-600">{formatFCFA(l.primePanier)}</div>
                         </>}
-                        {l.heuresHs40 > 0 && <>
-                          <div className="text-orange-500">HS &gt;48e ({l.heuresHs40}h × +40 %)</div>
-                          <div className="text-right font-medium text-orange-500">{formatFCFA(l.montantHs40)}</div>
-                        </>}
-                        {l.heuresFerie > 0 && <>
-                          <div className="text-amber-600">Jours fériés/dim. ({l.heuresFerie}h × +60 %)</div>
-                          <div className="text-right font-medium text-amber-600">{formatFCFA(l.montantFerie)}</div>
-                        </>}
-                        {l.heuresNuit > 0 && <>
-                          <div className="text-indigo-500">Maj. nuit semaine ({l.heuresNuit}h × +60 %)</div>
-                          <div className="text-right font-medium text-indigo-500">{formatFCFA(l.majorationNuit)}</div>
-                        </>}
-                        {l.heuresNuitFerie > 0 && <>
-                          <div className="text-indigo-700">Maj. nuit fériée ({l.heuresNuitFerie}h × +100 %)</div>
-                          <div className="text-right font-medium text-indigo-700">{formatFCFA(l.majorationNuitFerie)}</div>
+                        {(l.primeTransport ?? 0) > 0 && <>
+                          <div className="text-teal-600">Prime transport ({l.joursPresents}j × {formatFCFA(l.tauxTransport)}/j)</div>
+                          <div className="text-right font-medium text-teal-600">{formatFCFA(l.primeTransport)}</div>
                         </>}
                         <div className="font-semibold text-navy border-t border-slate-200 mt-1 pt-1">Total brut</div>
                         <div className="text-right font-bold text-green border-t border-slate-200 mt-1 pt-1">{formatFCFA(l.totalBrut)}</div>
+
+                        {/* ── Retenues salariales ── */}
+                        <div className="col-span-2 mt-3 pb-0.5 text-[10px] text-slate-400 uppercase tracking-wide font-semibold border-b border-slate-200">Retenues salariales</div>
+                        <div className="text-red-500">IPRES Rég. Général (5,6 %)</div>
+                        <div className="text-right font-medium text-red-500">-{formatFCFA(l.retIPRES)}</div>
+                        <div className="text-red-500">IPM salarié (50 % de 8 750 F)</div>
+                        <div className="text-right font-medium text-red-500">-{formatFCFA(l.retIPM)}</div>
+                        <div className="text-red-500">TRIMF</div>
+                        <div className="text-right font-medium text-red-500">-{formatFCFA(l.retTRIMF)}</div>
+                        {l.retIRPP > 0 && <>
+                          <div className="text-red-500">IRPP (Impôt sur le revenu)</div>
+                          <div className="text-right font-medium text-red-500">-{formatFCFA(l.retIRPP)}</div>
+                        </>}
+                        <div className="font-bold text-navy border-t border-slate-200 mt-1 pt-1">Salaire net</div>
+                        <div className="text-right font-bold text-navy border-t border-slate-200 mt-1 pt-1">{formatFCFA(l.salaireNet)}</div>
+
+                        {/* ── Charges patronales ── */}
+                        <div className="col-span-2 mt-3 pb-0.5 text-[10px] text-slate-400 uppercase tracking-wide font-semibold border-b border-slate-200">Charges patronales</div>
+                        <div className="text-slate-500">IPRES employeur (8,4 %)</div>
+                        <div className="text-right text-slate-500">{formatFCFA(l.charIPRES)}</div>
+                        <div className="text-slate-500">CSS Allocations familiales (7 %)</div>
+                        <div className="text-right text-slate-500">{formatFCFA(l.charCssAF)}</div>
+                        <div className="text-slate-500">CSS Accidents du travail (3 %)</div>
+                        <div className="text-right text-slate-500">{formatFCFA(l.charCssAT)}</div>
+                        <div className="text-slate-500">CFCE (3 %)</div>
+                        <div className="text-right text-slate-500">{formatFCFA(l.charCFCE)}</div>
+                        <div className="text-slate-500">IPM employeur (50 % de 8 750 F)</div>
+                        <div className="text-right text-slate-500">{formatFCFA(l.charIPM)}</div>
+                        <div className="font-medium text-slate-600 border-t border-slate-200 mt-1 pt-1">Total charges</div>
+                        <div className="text-right font-medium text-slate-600 border-t border-slate-200 mt-1 pt-1">{formatFCFA(l.totalChargesPatronales)}</div>
+                        <div className="font-bold text-slate-700 mt-0.5">Coût total employeur</div>
+                        <div className="text-right font-bold text-slate-700 mt-0.5">{formatFCFA(l.coutTotalEmployeur)}</div>
                       </div>
                     </td>
                   </tr>
@@ -493,13 +616,32 @@ function ResumeView({ siteId, mois, search }: { siteId: string; mois: string; se
         </tbody>
         <tfoot>
           <tr className="border-t-2 border-slate-300 bg-surface-0">
-            <td colSpan={3} className="px-3 py-2 font-semibold text-navy">Masse salariale</td>
+            <td colSpan={3} className="px-3 py-2 font-semibold text-navy">Masse salariale brute</td>
             <td className="px-2 py-2 text-right font-bold text-navy tabular-nums">{data.totalJours} j</td>
-            <td colSpan={5} />
+            <td colSpan={6} />
             <td className="px-3 py-2 text-right font-bold text-green tabular-nums text-sm">{formatFCFA(totalBrut)}</td>
           </tr>
         </tfoot>
       </table>
+
+      {/* ── Récap masse salariale ── */}
+      <div className="mt-3 grid grid-cols-3 gap-3 text-xs">
+        <div className="p-3 bg-green/10 rounded-lg border border-green/20">
+          <div className="text-slate-500 mb-0.5">Salaire net total</div>
+          <div className="font-bold text-navy tabular-nums text-sm">{formatFCFA(totalSalaireNet)}</div>
+          <div className="text-slate-400 mt-0.5">Retenues : -{formatFCFA(totalBrut - totalSalaireNet)}</div>
+        </div>
+        <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+          <div className="text-slate-500 mb-0.5">Charges patronales</div>
+          <div className="font-bold text-slate-700 tabular-nums text-sm">{formatFCFA(totalChargesPatronales)}</div>
+          <div className="text-slate-400 mt-0.5">IPRES + CSS AF/AT + CFCE + IPM</div>
+        </div>
+        <div className="p-3 bg-navy/5 rounded-lg border border-navy/10">
+          <div className="text-slate-500 mb-0.5">Coût total employeur</div>
+          <div className="font-bold text-navy tabular-nums text-sm">{formatFCFA(totalCoutEmployeur)}</div>
+          <div className="text-slate-400 mt-0.5">Brut {formatFCFA(totalBrut)} + charges</div>
+        </div>
+      </div>
     </div>
   );
 }

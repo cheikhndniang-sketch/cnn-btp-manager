@@ -34,6 +34,16 @@ export class CreateOuvrierDto {
   @Min(0)
   salaireBase!: number;
 
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  tauxPanier?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  tauxTransport?: number;
+
   @IsDateString()
   dateEntree!: string;
 
@@ -75,6 +85,16 @@ export class UpdateOuvrierDto {
   @IsNumber()
   @Min(0)
   salaireBase?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  tauxPanier?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  tauxTransport?: number;
 
   @IsOptional()
   @IsDateString()

@@ -418,6 +418,8 @@ export interface Document {
   mimetype: string;
   taille: number;
   description: string | null;
+  latitude: number | null;
+  longitude: number | null;
   createdAt: string;
   updatedAt: string;
   user: { name: string };
@@ -453,6 +455,8 @@ export interface Ouvrier {
   fonction: string | null;
   qualification: QualificationOuvrier;
   salaireBase: number;    // Salaire mensuel brut FCFA
+  tauxPanier: number;     // Prime panier FCFA/jour
+  tauxTransport: number;  // Prime transport FCFA/jour
   tauxJournalier: number; // alias rétrocompat = salaireBase
   dateEntree: string;
   dateSortie: string | null;
@@ -500,9 +504,30 @@ export interface LigneResume {
   montantFerie: number;
   majorationNuit: number;
   majorationNuitFerie: number;
+  tauxPanier: number;
+  tauxTransport: number;
+  joursAvecPanier: number;
+  primePanier: number;
+  primeTransport: number;
+  totalSalarial: number;          // base cotisations (hors primes exemptes)
   totalBrut: number;
-  tauxJournalier: number; // rétrocompat
-  salaireHt: number;      // rétrocompat
+  // Retenues salariales
+  retIPRES: number;               // IPRES Régime Général salarié 5,6 %
+  retIPM: number;                 // IPM salarié
+  retTRIMF: number;               // TRIMF
+  retIRPP: number;                // Impôt sur le revenu (IRPP)
+  totalRetenues: number;
+  salaireNet: number;
+  // Charges patronales
+  charIPRES: number;              // IPRES employeur 8,4 %
+  charCssAF: number;              // CSS Allocations familiales 7 %
+  charCssAT: number;              // CSS Accidents du travail 3 %
+  charCFCE: number;               // CFCE 3 %
+  charIPM: number;                // IPM employeur
+  totalChargesPatronales: number;
+  coutTotalEmployeur: number;
+  tauxJournalier: number;         // rétrocompat
+  salaireHt: number;              // rétrocompat
 }
 
 export interface ResumeMensuel {
@@ -510,4 +535,7 @@ export interface ResumeMensuel {
   lignes: LigneResume[];
   totalJours: number;
   totalSalaire: number;
+  totalSalaireNet: number;
+  totalChargesPatronales: number;
+  totalCoutEmployeur: number;
 }

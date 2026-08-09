@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { ALERT_TYPE_LABELS, ROLE_LABELS, type AppAlert } from '@/api/types';
 import { dashboardApi } from '@/api/endpoints';
 import { Logo } from './Logo';
+import { OfflineIndicator } from './OfflineIndicator';
 
 const NAV_ITEMS = [
   { label: 'Chantiers', to: '/dashboard', enabled: true },
@@ -247,6 +248,8 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
 
         <main className="flex-1 p-4 sm:p-6 overflow-auto">{children}</main>
       </div>
+
+      <OfflineIndicator />
     </div>
   );
 }

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { planningApi, type LotPayload, type TaskPayload } from '@/api/endpoints';
+import { planningApi, type LotPayload } from '@/api/endpoints';
 import { useAuth } from '@/hooks/useAuth';
+import { MUT_TASK_UPDATE, type TaskUpdateVars } from '@/lib/offline';
 import {
   TASK_STATUS_LABELS,
   type Lot,
@@ -406,11 +407,12 @@ function TaskRow({
 }) {
   const [progress, setProgress] = useState(task.progressPct);
 
-  const update = useMutation({
-    mutationFn: (payload: TaskPayload) =>
-      planningApi.updateTask(siteId, lotId, task.id, payload),
-    onSuccess: onChange,
+  // Avancement résumable hors-ligne — logique dans lib/offline.ts.
+  const update = useMutation<Task, unknown, TaskUpdateVars>({
+    mutationKey: MUT_TASK_UPDATE,
   });
+  const saveTask = (payload: TaskUpdateVars['payload']) =>
+    update.mutate({ siteId, lotId, taskId: task.id, payload });
 
   const remove = useMutation({
     mutationFn: () => planningApi.deleteTask(siteId, lotId, task.id),
@@ -440,13 +442,13 @@ function TaskRow({
         label="Début"
         value={task.startDate}
         editable={canManageLots}
-        onSave={(v) => update.mutate({ startDate: v })}
+        onSave={(v) => saveTask({ startDate: v })}
       />
       <DateField
         label="Fin"
         value={task.endDate}
         editable={canManageLots}
-        onSave={(v) => update.mutate({ endDate: v })}
+        onSave={(v) => saveTask({ endDate: v })}
       />
 
       <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_STYLES[task.status]}`}>
@@ -460,8 +462,8 @@ function TaskRow({
         step={5}
         value={progress}
         onChange={(e) => setProgress(Number(e.target.value))}
-        onMouseUp={() => update.mutate({ progressPct: progress })}
-        onTouchEnd={() => update.mutate({ progressPct: progress })}
+        onMouseUp={() => saveTask({ progressPct: progress })}
+        onTouchEnd={() => saveTask({ progressPct: progress })}
         className="w-28 accent-cyan"
         aria-label={`Avancement de ${task.name}`}
       />

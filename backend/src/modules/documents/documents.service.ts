@@ -23,6 +23,8 @@ const META_SELECT = {
   mimetype: true,
   taille: true,
   description: true,
+  latitude: true,
+  longitude: true,
   createdAt: true,
   updatedAt: true,
   user: { select: { name: true } },
@@ -64,6 +66,8 @@ export class DocumentsService {
         taille: file.size,
         contenu: file.buffer,
         description: dto.description,
+        latitude: dto.latitude ?? null,
+        longitude: dto.longitude ?? null,
       },
       select: META_SELECT,
     });
