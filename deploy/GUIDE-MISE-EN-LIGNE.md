@@ -1,25 +1,16 @@
-# Mise en ligne — cnn-btpmanagerpro.com
+# Mise en ligne — cnn-btpmanager.com
 
 Guide pas à pas, de zéro à l'application accessible en HTTPS.
 **Durée : ~45 min** (dont 10–30 min d'attente DNS).
 
 ---
 
-## Étape 1 — Acheter le domaine (~12 €/an)
+## Étape 1 — Domaine ✅ FAIT
 
-Le domaine `cnn-btpmanagerpro.com` n'est pas encore enregistré.
+`cnn-btpmanager.com` est enregistré et géré par **Cloudflare**
+(serveurs de noms `cosmin.ns.cloudflare.com` / `lady.ns.cloudflare.com`).
 
-| Registrar | Prix .com | Remarque |
-|---|---|---|
-| **Cloudflare Registrar** | ~10 €/an | Prix coûtant, DNS rapide et gratuit — **recommandé** |
-| **Namecheap** | ~12 €/an | Interface simple, paiement PayPal accepté |
-| **OVH** | ~13 €/an | Français, facturation en FCFA possible |
-
-> Le paiement d'un domaine passe généralement mieux que Railway/Stripe.
-> Namecheap et OVH acceptent PayPal.
-
-**Important** : activez la protection WHOIS (gratuite chez Cloudflare et
-Namecheap) pour ne pas exposer vos coordonnées publiquement.
+Il ne reste qu'à le faire pointer vers le VPS (étape 3).
 
 ---
 
@@ -50,25 +41,40 @@ type $env:USERPROFILE\.ssh\id_ed25519.pub
 
 ---
 
-## Étape 3 — Faire pointer le domaine vers le VPS
+## Étape 3 — Faire pointer le domaine vers le VPS (Cloudflare)
 
-Chez votre registrar, dans la zone DNS, créez **deux** enregistrements :
+Sur <https://dash.cloudflare.com> → domaine `cnn-btpmanager.com` → **DNS**.
 
-| Type | Nom | Valeur | TTL |
+Créez **deux** enregistrements :
+
+| Type | Nom | Contenu (IPv4) | Proxy |
 |---|---|---|---|
-| `A` | `@` | `<IP_DU_VPS>` | Auto |
-| `A` | `www` | `<IP_DU_VPS>` | Auto |
+| `A` | `@` | `<IP_DU_VPS>` | 🔘 **DNS only** (nuage **gris**) |
+| `A` | `www` | `<IP_DU_VPS>` | 🔘 **DNS only** (nuage **gris**) |
 
-> `@` désigne le domaine racine (`cnn-btpmanagerpro.com`).
-> Caddy redirigera automatiquement `www` vers le domaine principal.
+### ⚠️ Le nuage doit être GRIS, pas orange
+
+C'est le point qui fait échouer la plupart des installations.
+
+Avec le proxy Cloudflare activé (nuage **orange**), le trafic passe par
+Cloudflare : Caddy ne peut alors **pas obtenir son certificat Let's Encrypt**,
+et le mode SSL « Flexible » provoque une boucle de redirection infinie.
+
+Cliquez sur le nuage orange pour le passer en gris (« DNS only »).
+
+> Vous pourrez réactiver le proxy plus tard, **une fois le HTTPS
+> fonctionnel**, en réglant d'abord SSL/TLS → **Full (strict)** dans
+> Cloudflare. Ce n'est pas nécessaire pour démarrer.
 
 **Vérifier la propagation** (depuis votre PC) :
 
 ```powershell
-nslookup cnn-btpmanagerpro.com 8.8.8.8
+nslookup cnn-btpmanager.com 8.8.8.8
 ```
 
-Continuez seulement quand l'IP de votre VPS s'affiche (10–30 min en général).
+Continuez seulement quand **l'IP de votre VPS** s'affiche — et non une IP
+Cloudflare (`104.x` ou `172.67.x`, signe que le proxy est resté actif).
+Cloudflare propage en 1 à 5 min.
 
 ---
 
@@ -115,7 +121,7 @@ Ouvrez le fichier et collez-les :
 nano .env
 ```
 
-`DOMAIN` est déjà réglé sur `cnn-btpmanagerpro.com`.
+`DOMAIN` est déjà réglé sur `cnn-btpmanager.com`.
 Enregistrez avec `Ctrl+O`, `Entrée`, puis `Ctrl+X`.
 
 > ⚠️ `JWT_SECRET` et `JWT_REFRESH_SECRET` doivent être **différents**.
@@ -153,7 +159,7 @@ première connexion.**
 
 ## ✅ C'est en ligne
 
-<https://cnn-btpmanagerpro.com>
+<https://cnn-btpmanager.com>
 
 Le certificat HTTPS est obtenu automatiquement par Caddy.
 
@@ -218,7 +224,8 @@ cd /opt/cnn-btp/deploy && docker compose -f docker-compose.prod.yml up -d --buil
 
 | Symptôme | Action |
 |---|---|
-| Pas de HTTPS / erreur de certificat | Le DNS n'est pas propagé : `nslookup cnn-btpmanagerpro.com 8.8.8.8`, puis `docker compose -f docker-compose.prod.yml restart caddy` |
+| Pas de HTTPS / erreur de certificat | **Vérifiez d'abord le nuage gris** sur Cloudflare (étape 3). Si `nslookup` renvoie une IP `104.x`/`172.67.x`, le proxy est encore actif et bloque Let's Encrypt. Une fois corrigé : `docker compose -f docker-compose.prod.yml restart caddy` |
+| Boucle de redirection infinie | Proxy Cloudflare orange + SSL « Flexible ». Passez le nuage en gris, ou SSL/TLS → **Full (strict)** |
 | `502 Bad Gateway` | Backend en démarrage : `docker compose -f docker-compose.prod.yml logs backend` |
 | Backend redémarre en boucle | Secret manquant dans `.env` : `docker compose -f docker-compose.prod.yml logs backend` |
 | Connexion SSH refusée | Vérifiez l'IP et que votre clé SSH est bien enregistrée chez Hetzner |
