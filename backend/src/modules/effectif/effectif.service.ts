@@ -19,6 +19,35 @@ const TAUX_BASE = 173.33; // h normales mensuelles (40h × 52 / 12)
 // salaire est proratisé sur cette base (conducteurs, encadrement, gardiens).
 const JOURS_FORFAIT = 30;
 
+// ── Personnel productif / non productif ──────────────────────────────
+// Productif = main-d'œuvre directe, qui exécute l'ouvrage (y compris les
+// chefs d'équipe et les conducteurs d'engins).
+// Non productif = encadrement, études, qualité, sécurité, maintenance,
+// gardiennage — coûts indirects du chantier.
+//
+// L'ordre des règles compte : « CONDUCTEUR TRAVAUX » (encadrement) doit
+// être reconnu avant « CONDUCTEUR <engin> » (production).
+const NON_PRODUCTIF = [
+  /CONDUCTEUR\s*(DE\s*)?TRAVAUX/,
+  /CHEF\s*(DE\s*)?CHANTIER/,
+  /DIRECTEUR|RESPONSABLE|ASSISTANTE?\s|SECRETAIRE|COMPTABLE/,
+  /TOPOGRAPH/,
+  /HSE|SECURITE|QUALITE/,
+  /CONTR.LE\s*DE\s*GESTION|GESTIONNAIRE/,
+  /MECANICIEN|MAINTENANCE|ELECTRO/,
+  /GARDIEN|VIGILE|POINTEUR|MAGASINIER|STAGIAIRE|PLANTON|CHAUFFEUR/,
+  /INGENIEUR|INGERIEUR|FORMEN/,
+];
+
+export function estNonProductif(emploi: string | null): boolean {
+  if (!emploi) return false;
+  const e = emploi
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, ''); // retire les accents
+  return NON_PRODUCTIF.some((re) => re.test(e));
+}
+
 // ── Cotisations sociales — barème CSE Immobilier ─────────────────────
 // Taux relevés sur la paie réelle du chantier Sandaga (août 2025) et
 // validés sur 136 bulletins : charges patronales exactes 136/136,
@@ -108,7 +137,8 @@ export class EffectifService {
         ...(dto.forfaitMensuel !== undefined && { forfaitMensuel: dto.forfaitMensuel }),
         ...(dto.exonereCotisations !== undefined && { exonereCotisations: dto.exonereCotisations }),
         ...(dto.hsForfaitaire !== undefined && { hsForfaitaire: dto.hsForfaitaire }),
-        ...(dto.dateEntree !== undefined && { dateEntree: new Date(dto.dateEntree) }),
+        // dateEntree est obligatoire : un champ vidé est ignoré, pas mis à zéro.
+        ...(dto.dateEntree ? { dateEntree: new Date(dto.dateEntree) } : {}),
         ...(dto.dateSortie !== undefined && { dateSortie: dto.dateSortie ? new Date(dto.dateSortie) : null }),
         ...(dto.actif !== undefined && { actif: dto.actif }),
         ...(dto.telephone !== undefined && { telephone: dto.telephone }),
@@ -169,6 +199,58 @@ export class EffectifService {
     await this.sites.assertCanAccess(siteId, actor);
     if (!MANAGERS.includes(actor.role)) throw new ForbiddenException('Droits insuffisants');
     await this.prisma.pointage.delete({ where: { id } });
+  }
+
+  // ── Récapitulatif d'effectif : productif / non productif ─────────────
+
+  async recapEffectif(siteId: string, actor: Actor, mois: string) {
+    await this.sites.assertCanAccess(siteId, actor);
+
+    const recaps = await this.prisma.recapMensuel.findMany({
+      where: { siteId },
+      include: { ouvrier: { select: { fonction: true } } },
+    });
+
+    // Effectif du mois demandé, ventilé par fonction
+    const parFonction = new Map<string, { fonction: string; nb: number; nonProductif: boolean }>();
+    for (const r of recaps.filter((x) => x.mois === mois)) {
+      const emploi = (r.emploi || r.ouvrier.fonction || 'Non renseigné').trim();
+      const cle = emploi.toUpperCase();
+      if (!parFonction.has(cle)) {
+        parFonction.set(cle, { fonction: emploi, nb: 0, nonProductif: estNonProductif(emploi) });
+      }
+      parFonction.get(cle)!.nb++;
+    }
+
+    const lignes = [...parFonction.values()].sort((a, b) => b.nb - a.nb || a.fonction.localeCompare(b.fonction));
+    const productifs = lignes.filter((l) => !l.nonProductif);
+    const nonProductifs = lignes.filter((l) => l.nonProductif);
+    const totalProductifs = productifs.reduce((a, l) => a + l.nb, 0);
+    const totalNonProductifs = nonProductifs.reduce((a, l) => a + l.nb, 0);
+    const total = totalProductifs + totalNonProductifs;
+
+    // Évolution mois par mois, pour situer le mois dans la durée
+    const parMois = new Map<string, { mois: string; productifs: number; nonProductifs: number }>();
+    for (const r of recaps) {
+      if (!parMois.has(r.mois)) parMois.set(r.mois, { mois: r.mois, productifs: 0, nonProductifs: 0 });
+      const e = parMois.get(r.mois)!;
+      if (estNonProductif(r.emploi || r.ouvrier.fonction)) e.nonProductifs++;
+      else e.productifs++;
+    }
+    const evolution = [...parMois.values()]
+      .sort((a, b) => a.mois.localeCompare(b.mois))
+      .map((m) => ({ ...m, total: m.productifs + m.nonProductifs }));
+
+    return {
+      mois,
+      productifs,
+      nonProductifs,
+      totalProductifs,
+      totalNonProductifs,
+      total,
+      pctProductifs: total > 0 ? Math.round((totalProductifs / total) * 1000) / 10 : 0,
+      evolution,
+    };
   }
 
   // ── Résumé mensuel avec calcul HS droit sénégalais ───────────────────

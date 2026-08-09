@@ -59,7 +59,13 @@ function OuvrierForm({ siteId, initial, onClose }: OuvrierFormProps) {
       void qc.invalidateQueries({ queryKey: ['effectif-resume', siteId] });
       onClose();
     },
-    onError: () => setError('Erreur lors de la sauvegarde'),
+    onError: (e: unknown) => {
+      // Remonter le motif exact renvoyé par l'API plutôt qu'un message
+      // générique, qui masque la cause réelle du refus.
+      const msg = (e as { response?: { data?: { message?: string | string[] } } })
+        ?.response?.data?.message;
+      setError(Array.isArray(msg) ? msg.join(' · ') : msg || 'Erreur lors de la sauvegarde');
+    },
   });
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
@@ -772,9 +778,109 @@ function ResumeView({ siteId, mois, search }: { siteId: string; mois: string; se
   );
 }
 
+// ── Récapitulatif d'effectif : productif / non productif ──────────────
+
+function RecapEffectifView({ siteId, mois }: { siteId: string; mois: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['effectif-recap', siteId, mois],
+    queryFn: () => effectifApi.recapEffectif(siteId, mois),
+  });
+
+  if (isLoading) return <p className="text-sm text-slate-400 py-4">Chargement…</p>;
+  if (!data || data.total === 0) {
+    return <p className="text-sm text-slate-400 text-center py-8">Aucun effectif enregistré pour ce mois.</p>;
+  }
+
+  const maxTotal = Math.max(...data.evolution.map((m) => m.total), 1);
+  const evo = data.evolution.slice(-14);
+
+  const Colonne = ({ titre, lignes, total, couleur }: {
+    titre: string; lignes: typeof data.productifs; total: number; couleur: string;
+  }) => (
+    <div className="card p-0 overflow-hidden">
+      <div className={`px-4 py-2.5 ${couleur} text-white flex items-baseline justify-between`}>
+        <span className="font-semibold text-sm">{titre}</span>
+        <span className="text-lg font-bold tabular-nums">{total}</span>
+      </div>
+      <table className="w-full text-sm">
+        <tbody className="divide-y divide-slate-100">
+          {lignes.map((l) => (
+            <tr key={l.fonction} className="hover:bg-surface-0">
+              <td className="px-4 py-1.5 text-slate-700">{l.fonction}</td>
+              <td className="px-4 py-1.5 text-right font-medium text-navy tabular-nums w-16">{l.nb}</td>
+            </tr>
+          ))}
+          {lignes.length === 0 && (
+            <tr><td className="px-4 py-3 text-slate-400 text-xs">Aucun</td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* Chiffres clés */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="kpi-card">
+          <span className="text-xs uppercase tracking-wide text-slate-500">Effectif total</span>
+          <span className="text-2xl font-bold text-navy">{data.total}</span>
+        </div>
+        <div className="kpi-card">
+          <span className="text-xs uppercase tracking-wide text-slate-500">Productifs</span>
+          <span className="text-2xl font-bold text-green">{data.totalProductifs}</span>
+          <span className="text-xs text-slate-400">{data.pctProductifs} % de l'effectif</span>
+        </div>
+        <div className="kpi-card">
+          <span className="text-xs uppercase tracking-wide text-slate-500">Non productifs</span>
+          <span className="text-2xl font-bold text-orange">{data.totalNonProductifs}</span>
+          <span className="text-xs text-slate-400">{(100 - data.pctProductifs).toFixed(1)} % de l'effectif</span>
+        </div>
+      </div>
+
+      {/* Ventilation par fonction */}
+      <div className="grid md:grid-cols-2 gap-4">
+        <Colonne titre="Personnel productif" lignes={data.productifs} total={data.totalProductifs} couleur="bg-green" />
+        <Colonne titre="Personnel non productif" lignes={data.nonProductifs} total={data.totalNonProductifs} couleur="bg-orange" />
+      </div>
+
+      {/* Évolution mensuelle */}
+      <div className="card">
+        <h3 className="font-semibold text-navy text-sm mb-3">Évolution de l'effectif</h3>
+        <div className="flex items-end gap-1 h-32 mb-1">
+          {evo.map((m) => (
+            <div key={m.mois} className="flex-1 flex flex-col justify-end group relative" title={`${m.mois} — ${m.total} personnes (${m.productifs} productifs, ${m.nonProductifs} non productifs)`}>
+              <div className="bg-orange rounded-t-sm" style={{ height: `${(m.nonProductifs / maxTotal) * 100}%` }} />
+              <div className="bg-green" style={{ height: `${(m.productifs / maxTotal) * 100}%` }} />
+              <div className="absolute -top-5 left-0 right-0 text-center text-[9px] text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                {m.total}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-1 text-[9px] text-slate-400">
+          {evo.map((m) => (
+            <div key={m.mois} className="flex-1 text-center">{m.mois.slice(5)}/{m.mois.slice(2, 4)}</div>
+          ))}
+        </div>
+        <div className="flex gap-4 text-[10px] text-slate-400 mt-2 pt-2 border-t border-slate-100">
+          <span><span className="inline-block w-2.5 h-2.5 rounded bg-green mr-1" />Productifs</span>
+          <span><span className="inline-block w-2.5 h-2.5 rounded bg-orange mr-1" />Non productifs</span>
+        </div>
+      </div>
+
+      <p className="text-xs text-slate-400">
+        Productif = main-d'œuvre directe (maçons, manœuvres, menuisiers, chefs
+        d'équipe, conducteurs d'engins). Non productif = encadrement, études,
+        qualité, sécurité, maintenance et gardiennage.
+      </p>
+    </div>
+  );
+}
+
 // ── Tab principal ─────────────────────────────────────────────────────
 
-type SubTab = 'equipe' | 'pointage' | 'salaires';
+type SubTab = 'equipe' | 'pointage' | 'salaires' | 'recap';
 
 interface EffectifTabProps {
   siteId: string;
@@ -813,6 +919,7 @@ export function EffectifTab({ siteId }: EffectifTabProps) {
     { key: 'equipe', label: `Équipe (${ouvriers.filter(o => o.actif).length})` },
     { key: 'pointage', label: 'Pointage' },
     { key: 'salaires', label: 'Bulletin de paie' },
+    { key: 'recap', label: 'Récap effectif' },
   ];
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -859,7 +966,7 @@ export function EffectifTab({ siteId }: EffectifTabProps) {
             )}
           </div>
           {/* Sélecteur mois */}
-          {(subTab === 'pointage' || subTab === 'salaires') && (
+          {(subTab === 'pointage' || subTab === 'salaires' || subTab === 'recap') && (
             <input
               type="month"
               value={mois}
@@ -983,6 +1090,9 @@ export function EffectifTab({ siteId }: EffectifTabProps) {
           <ResumeView siteId={siteId} mois={mois} search={search} />
         </div>
       )}
+
+      {/* Récapitulatif d'effectif */}
+      {subTab === 'recap' && <RecapEffectifView siteId={siteId} mois={mois} />}
 
       {showForm && (
         <OuvrierForm

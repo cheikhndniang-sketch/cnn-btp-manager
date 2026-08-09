@@ -101,4 +101,16 @@ export class EffectifController {
     const m = mois ?? new Date().toISOString().slice(0, 7);
     return this.effectif.resumeMensuel(siteId, this.actor(user), m);
   }
+
+  // ── Récapitulatif d'effectif (productif / non productif) ──────────────
+
+  @Get('recap-effectif')
+  recapEffectif(
+    @Param('siteId') siteId: string,
+    @Query('mois') mois: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    const m = mois ?? new Date().toISOString().slice(0, 7);
+    return this.effectif.recapEffectif(siteId, this.actor(user), m);
+  }
 }

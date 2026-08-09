@@ -567,3 +567,29 @@ export interface ResumeMensuel {
   totalChargesPatronales: number;
   totalCoutEmployeur: number;
 }
+
+// ── Récapitulatif d'effectif (productif / non productif) ──────────────
+
+export interface LigneEffectif {
+  fonction: string;
+  nb: number;
+  nonProductif: boolean;
+}
+
+export interface MoisEffectif {
+  mois: string;
+  productifs: number;
+  nonProductifs: number;
+  total: number;
+}
+
+export interface RecapEffectif {
+  mois: string;
+  productifs: LigneEffectif[];
+  nonProductifs: LigneEffectif[];
+  totalProductifs: number;
+  totalNonProductifs: number;
+  total: number;
+  pctProductifs: number;
+  evolution: MoisEffectif[];
+}

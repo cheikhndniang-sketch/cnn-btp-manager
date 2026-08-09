@@ -13,6 +13,7 @@ import type {
   Pointage,
   QualificationOuvrier,
   RapportChantier,
+  RecapEffectif,
   ResumeMensuel,
   Role,
   Site,
@@ -355,6 +356,8 @@ export const effectifApi = {
     api.delete(`/sites/${siteId}/effectif/pointages/${id}`).then((r) => r.data),
   resume: (siteId: string, mois: string) =>
     api.get<ResumeMensuel>(`/sites/${siteId}/effectif/resume`, { params: { mois } }).then((r) => r.data),
+  recapEffectif: (siteId: string, mois: string) =>
+    api.get<RecapEffectif>(`/sites/${siteId}/effectif/recap-effectif`, { params: { mois } }).then((r) => r.data),
 };
 
 export const documentsApi = {

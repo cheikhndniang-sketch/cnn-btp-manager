@@ -1,4 +1,13 @@
-import { IsBoolean, IsDateString, IsEnum, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { Transform } from 'class-transformer';
+import {
+  IsBoolean,
+  IsDateString,
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 
 export enum QualificationOuvrier {
   MANOEUVRE = 'MANOEUVRE',
@@ -9,6 +18,17 @@ export enum QualificationOuvrier {
   INGENIEUR = 'INGENIEUR',
   AUTRE = 'AUTRE',
 }
+
+/**
+ * Un champ de formulaire laissé vide arrive en chaîne vide, que `@IsOptional()`
+ * ne neutralise pas (il n'ignore que null/undefined). Sans cette conversion,
+ * enregistrer un salarié sans date de sortie échoue en 400.
+ *
+ * La valeur devient `null` et non `undefined` : le service distingue les deux,
+ * `null` effaçant la date alors que `undefined` la laisserait inchangée.
+ */
+const VideEnNull = () =>
+  Transform(({ value }) => (value === '' ? null : value));
 
 export class CreateOuvrierDto {
   @IsString()
@@ -57,13 +77,13 @@ export class CreateOuvrierDto {
   @Min(0)
   hsForfaitaire?: number;
 
-
   @IsDateString()
   dateEntree!: string;
 
   @IsOptional()
+  @VideEnNull()
   @IsDateString()
-  dateSortie?: string;
+  dateSortie?: string | null;
 
   @IsOptional()
   @IsString()
@@ -123,14 +143,15 @@ export class UpdateOuvrierDto {
   @Min(0)
   hsForfaitaire?: number;
 
+  @IsOptional()
+  @VideEnNull()
+  @IsDateString()
+  dateEntree?: string | null;
 
   @IsOptional()
+  @VideEnNull()
   @IsDateString()
-  dateEntree?: string;
-
-  @IsOptional()
-  @IsDateString()
-  dateSortie?: string;
+  dateSortie?: string | null;
 
   @IsOptional()
   @IsBoolean()
