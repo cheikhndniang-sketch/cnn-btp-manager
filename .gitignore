@@ -13,3 +13,8 @@ coverage/
 .DS_Store
 backend/prisma/migrations/dev.db*
 frontend/.vite/
+
+# Déploiement VPS — secrets et dumps de base (jamais versionnés)
+deploy/.env
+deploy/backups/
+*.dump

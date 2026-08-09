@@ -1,0 +1,38 @@
+# Caddy — HTTPS automatique (Let's Encrypt) + routage par chemin.
+# Le certificat est obtenu et renouvelé tout seul dès que le domaine
+# pointe vers l'IP du VPS.
+
+{$DOMAIN} {
+	encode gzip zstd
+
+	# API NestJS — le préfixe /v1 est conservé (setGlobalPrefix('v1')).
+	handle /v1/* {
+		reverse_proxy backend:3000
+	}
+
+	# Frontend SPA (serve -s gère déjà le fallback index.html).
+	handle {
+		reverse_proxy frontend:3000
+	}
+
+	# En-têtes de sécurité. On ne définit pas Content-Security-Policy ici :
+	# Helmet s'en charge côté API, et une CSP trop stricte casserait la PWA.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# Le service worker ne doit jamais être servi depuis le cache HTTP,
+	# sinon les mises à jour de l'app ne parviennent pas aux téléphones.
+	@sw path /sw.js /registerSW.js
+	header @sw Cache-Control "no-cache, no-store, must-revalidate"
+
+	log {
+		output file /data/access.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+	}
+}
