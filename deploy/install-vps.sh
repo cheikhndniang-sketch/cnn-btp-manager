@@ -32,6 +32,18 @@ apt-get upgrade -y -qq
 say "Installation des outils de base"
 apt-get install -y -qq ca-certificates curl gnupg git ufw fail2ban
 
+# Fichier d'échange : la compilation du frontend (Vite/TypeScript) demande
+# ~1,5 Go. Sans swap, un VPS de 2 Go echoue pendant « docker compose build ».
+TOTAL_MB=$(free -m | awk '/^Mem:/{print $2}')
+if [ "$TOTAL_MB" -lt 3500 ] && ! swapon --show | grep -q .; then
+	say "Mémoire limitée (${TOTAL_MB} Mo) — création d'un swap de 2 Go"
+	fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048
+	chmod 600 /swapfile
+	mkswap /swapfile >/dev/null
+	swapon /swapfile
+	grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >>/etc/fstab
+fi
+
 say "Installation de Docker"
 if ! command -v docker >/dev/null 2>&1; then
 	install -m 0755 -d /etc/apt/keyrings
