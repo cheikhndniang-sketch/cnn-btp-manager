@@ -15,6 +15,10 @@ const MANAGERS: Role[] = [Role.ADMIN, Role.DIRECTEUR_PROJET, Role.DIRECTEUR_TRAV
 
 const TAUX_BASE = 173.33; // h normales mensuelles (40h × 52 / 12)
 
+// Rémunération au forfait : le mois compte 30 jours calendaires et le
+// salaire est proratisé sur cette base (conducteurs, encadrement, gardiens).
+const JOURS_FORFAIT = 30;
+
 // ── Cotisations sociales — barème CSE Immobilier ─────────────────────
 // Taux relevés sur la paie réelle du chantier Sandaga (août 2025) et
 // validés sur 136 bulletins : charges patronales exactes 136/136,
@@ -198,6 +202,7 @@ export class EffectifService {
         : 0;
       const tauxPanier = o.tauxPanier ?? 0;
       const tauxTransport = o.tauxTransport ?? 0;
+      const forfait = o.forfaitMensuel ?? false;
 
       // Regroupement par semaine ISO (l'arrondi se fait par semaine : chaque
       // semaine est l'unité légale de décompte des heures supplémentaires).
@@ -283,7 +288,11 @@ export class EffectifService {
         hHs40  = Number(recap.heuresHs40);
         hFerie = Number(recap.heuresHs60);   // H 60 % → férié/dimanche
         hHs100 = Number(recap.heuresHs100);  // H 100 % → taux double
-        mNorm  = Math.round(hNorm  * tauxHoraire);
+        // Au forfait, la colonne « H. normales » compte des JOURS sur une
+        // base de 30 j calendaires : le salaire est proratisé, pas horaire.
+        mNorm  = forfait
+          ? Math.round((salaireBase * Math.min(hNorm, JOURS_FORFAIT)) / JOURS_FORFAIT)
+          : Math.round(hNorm * tauxHoraire);
         mHs15  = Math.round(hHs15  * tauxHoraire * 1.15);
         mHs40  = Math.round(hHs40  * tauxHoraire * 1.40);
         mFerie = Math.round(hFerie * tauxHoraire * 1.60);
@@ -292,6 +301,12 @@ export class EffectifService {
         joursPresents   = recap.joursTransport;
         joursAvecPanier = recap.nbPaniers;
         detailSemaines.length = 0; // pas de découpage hebdomadaire disponible
+      } else if (forfait) {
+        // Saisie journalière pour un salarié au forfait : on proratise sur 30 j.
+        mNorm  = Math.round((salaireBase * Math.min(joursPresents, JOURS_FORFAIT)) / JOURS_FORFAIT);
+        mHs15 = 0; mHs40 = 0; mFerie = 0;
+        hHs15 = 0; hHs40 = 0; hFerie = 0;
+        detailSemaines.length = 0;
       }
 
       const majNuit      = Math.round(nuitSemaineTotal * tauxHoraire * 0.60);
@@ -349,6 +364,7 @@ export class EffectifService {
         heuresHs100:   hHs100,
         montantHs100:  mHs100,
         sourceRecap,
+        forfaitMensuel: forfait,
         detailSemaines,
         montantNormal:       mNorm,
         montantHs15:         mHs15,

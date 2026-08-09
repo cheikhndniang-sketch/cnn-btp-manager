@@ -518,6 +518,8 @@ export interface LigneResume {
   montantHs100: number;
   /** true = repris d'un récapitulatif de paie, sans pointage journalier */
   sourceRecap: boolean;
+  /** true = rémunéré au mois de 30 jours calendaires (salaire proratisé) */
+  forfaitMensuel: boolean;
   detailSemaines: SemaineResume[];
   montantNormal: number;
   montantHs15: number;

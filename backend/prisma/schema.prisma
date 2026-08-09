@@ -435,6 +435,9 @@ model Ouvrier {
   tauxTransport  Int                  @default(0) // Prime transport FCFA/jour
   // Prestataires (gardiens, stagiaires) : non assujettis aux cotisations
   exonereCotisations Boolean          @default(false)
+  /// Rémunération au mois de 30 jours calendaires (conducteurs, gardiens,
+  /// encadrement) : le salaire est proratisé sur 30 j, pas calculé à l'heure.
+  forfaitMensuel     Boolean          @default(false)
   dateEntree    DateTime             @db.Date
   dateSortie    DateTime?            @db.Date
   actif         Boolean              @default(true)

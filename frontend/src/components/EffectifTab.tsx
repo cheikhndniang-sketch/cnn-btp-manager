@@ -509,9 +509,15 @@ function ResumeView({ siteId, mois, search }: { siteId: string; mois: string; se
                     {l.fonction && <div className="text-[10px] text-slate-400">{l.fonction}</div>}
                   </td>
                   <td className="px-2 py-2 text-right text-slate-500 tabular-nums">{l.salaireBase > 0 ? formatFCFA(l.salaireBase) : '—'}</td>
-                  <td className="px-2 py-2 text-right text-slate-500 tabular-nums">{l.tauxHoraire > 0 ? `${l.tauxHoraire.toFixed(4)} F` : '—'}</td>
+                  <td className="px-2 py-2 text-right text-slate-500 tabular-nums">
+                    {l.forfaitMensuel
+                      ? <span className="text-[10px] text-purple-600 font-medium">forfait 30 j</span>
+                      : l.tauxHoraire > 0 ? `${l.tauxHoraire.toFixed(4)} F` : '—'}
+                  </td>
                   <td className="px-2 py-2 text-right font-medium text-navy tabular-nums">{l.joursPresents}</td>
-                  <td className="px-2 py-2 text-right tabular-nums">{l.heuresNormales}h</td>
+                  <td className="px-2 py-2 text-right tabular-nums">
+                    {l.forfaitMensuel ? `${l.heuresNormales} j` : `${l.heuresNormales}h`}
+                  </td>
                   <td className={`px-2 py-2 text-right tabular-nums ${l.heuresHs15 > 0 ? 'text-blue-600 font-medium' : 'text-slate-300'}`}>{l.heuresHs15 > 0 ? `${l.heuresHs15}h` : '—'}</td>
                   <td className={`px-2 py-2 text-right tabular-nums ${l.heuresHs40 > 0 ? 'text-orange-500 font-medium' : 'text-slate-300'}`}>{l.heuresHs40 > 0 ? `${l.heuresHs40}h` : '—'}</td>
                   <td className={`px-2 py-2 text-right tabular-nums ${l.heuresFerie > 0 ? 'text-amber-600 font-medium' : 'text-slate-300'}`}>{l.heuresFerie > 0 ? `${l.heuresFerie}h` : '—'}</td>
@@ -539,6 +545,16 @@ function ResumeView({ siteId, mois, search }: { siteId: string; mois: string; se
                         {/* Taux unitaires arrondis à l'FCFA (calculés depuis tauxHoraire à 4 déc.) */}
                         {(() => {
                           const fmt4 = (n: number) => n.toFixed(4);
+                          // Au forfait : rémunération proratisée sur 30 jours
+                          // calendaires, sans décompte horaire.
+                          if (l.forfaitMensuel) {
+                            return <>
+                              <div className="text-slate-500">
+                                Forfait mensuel ({l.heuresNormales} j / 30 × {formatFCFA(l.salaireBase)})
+                              </div>
+                              <div className="text-right font-medium">{formatFCFA(l.montantNormal)}</div>
+                            </>;
+                          }
                           const th    = fmt4(l.tauxHoraire);
                           const th15  = fmt4(l.tauxHoraire * 1.15);
                           const th40  = fmt4(l.tauxHoraire * 1.40);
