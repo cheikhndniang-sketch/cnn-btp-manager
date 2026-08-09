@@ -44,6 +44,20 @@ export class CreateOuvrierDto {
   @Min(0)
   tauxTransport?: number;
 
+  @IsOptional()
+  @IsBoolean()
+  forfaitMensuel?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  exonereCotisations?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  hsForfaitaire?: number;
+
+
   @IsDateString()
   dateEntree!: string;
 
@@ -95,6 +109,20 @@ export class UpdateOuvrierDto {
   @IsNumber()
   @Min(0)
   tauxTransport?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  forfaitMensuel?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  exonereCotisations?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  hsForfaitaire?: number;
+
 
   @IsOptional()
   @IsDateString()

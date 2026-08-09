@@ -317,6 +317,9 @@ export interface CreateOuvrierPayload {
   salaireBase: number;
   tauxPanier?: number;
   tauxTransport?: number;
+  forfaitMensuel?: boolean;
+  exonereCotisations?: boolean;
+  hsForfaitaire?: number;
   dateEntree: string;
   dateSortie?: string;
   telephone?: string;

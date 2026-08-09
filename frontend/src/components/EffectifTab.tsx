@@ -38,6 +38,9 @@ function OuvrierForm({ siteId, initial, onClose }: OuvrierFormProps) {
     salaireBase: initial?.salaireBase ?? 0,
     tauxPanier: initial?.tauxPanier ?? 0,
     tauxTransport: initial?.tauxTransport ?? 0,
+    forfaitMensuel: initial?.forfaitMensuel ?? false,
+    exonereCotisations: initial?.exonereCotisations ?? false,
+    hsForfaitaire: initial?.hsForfaitaire ?? 0,
     dateEntree: initial?.dateEntree?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
     dateSortie: initial?.dateSortie?.slice(0, 10) ?? '',
     telephone: initial?.telephone ?? '',
@@ -139,6 +142,52 @@ function OuvrierForm({ siteId, initial, onClose }: OuvrierFormProps) {
               placeholder="0 ou 1000"
             />
           </div>
+          {/* Régime de rémunération */}
+          <div className="col-span-2 border-t border-slate-100 pt-3 mt-1 space-y-2">
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={form.forfaitMensuel}
+                onChange={(e) => setForm((f) => ({ ...f, forfaitMensuel: e.target.checked }))}
+                className="w-4 h-4 accent-cyan"
+              />
+              Rémunéré au mois de 30 jours calendaires (forfait)
+            </label>
+            <p className="text-xs text-slate-400 -mt-1 ml-6">
+              Conducteurs, encadrement, gardiens : salaire proratisé sur 30 j
+              au lieu d'un calcul horaire.
+            </p>
+
+            {form.forfaitMensuel && (
+              <div className="ml-6">
+                <label className="label">Heures supplémentaires forfaitaires (FCFA/mois)</label>
+                <input
+                  className="input"
+                  type="number"
+                  min={0}
+                  step={5000}
+                  value={form.hsForfaitaire}
+                  onChange={(e) => setForm((f) => ({ ...f, hsForfaitaire: Number(e.target.value) }))}
+                  placeholder="0"
+                />
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Montant convenu, versé en plus du salaire. Laisser à 0 si le
+                  salarié n'en bénéficie pas.
+                </p>
+              </div>
+            )}
+
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={form.exonereCotisations}
+                onChange={(e) => setForm((f) => ({ ...f, exonereCotisations: e.target.checked }))}
+                className="w-4 h-4 accent-cyan"
+              />
+              Exonéré de cotisations sociales (prestataire, stagiaire)
+            </label>
+          </div>
+
           <div>
             <label className="label">Date d'entrée *</label>
             <input className="input" type="date" value={form.dateEntree} onChange={set('dateEntree')} required />
@@ -553,6 +602,10 @@ function ResumeView({ siteId, mois, search }: { siteId: string; mois: string; se
                                 Forfait mensuel ({l.heuresNormales} j / 30 × {formatFCFA(l.salaireBase)})
                               </div>
                               <div className="text-right font-medium">{formatFCFA(l.montantNormal)}</div>
+                              {(l.hsForfaitaire ?? 0) > 0 && <>
+                                <div className="text-blue-600">Heures suppl. forfaitaires</div>
+                                <div className="text-right font-medium text-blue-600">{formatFCFA(l.hsForfaitaire)}</div>
+                              </>}
                             </>;
                           }
                           const th    = fmt4(l.tauxHoraire);

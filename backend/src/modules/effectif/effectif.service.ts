@@ -80,6 +80,9 @@ export class EffectifService {
         salaireBase: BigInt(Math.round(dto.salaireBase)),
         tauxPanier: dto.tauxPanier ?? 0,
         tauxTransport: dto.tauxTransport ?? 0,
+        forfaitMensuel: dto.forfaitMensuel ?? false,
+        exonereCotisations: dto.exonereCotisations ?? false,
+        hsForfaitaire: dto.hsForfaitaire ?? 0,
         dateEntree: new Date(dto.dateEntree),
         dateSortie: dto.dateSortie ? new Date(dto.dateSortie) : null,
         telephone: dto.telephone,
@@ -102,6 +105,9 @@ export class EffectifService {
         ...(dto.salaireBase !== undefined && { salaireBase: BigInt(Math.round(dto.salaireBase)) }),
         ...(dto.tauxPanier !== undefined && { tauxPanier: dto.tauxPanier }),
         ...(dto.tauxTransport !== undefined && { tauxTransport: dto.tauxTransport }),
+        ...(dto.forfaitMensuel !== undefined && { forfaitMensuel: dto.forfaitMensuel }),
+        ...(dto.exonereCotisations !== undefined && { exonereCotisations: dto.exonereCotisations }),
+        ...(dto.hsForfaitaire !== undefined && { hsForfaitaire: dto.hsForfaitaire }),
         ...(dto.dateEntree !== undefined && { dateEntree: new Date(dto.dateEntree) }),
         ...(dto.dateSortie !== undefined && { dateSortie: dto.dateSortie ? new Date(dto.dateSortie) : null }),
         ...(dto.actif !== undefined && { actif: dto.actif }),
@@ -293,10 +299,12 @@ export class EffectifService {
         mNorm  = forfait
           ? Math.round((salaireBase * Math.min(hNorm, JOURS_FORFAIT)) / JOURS_FORFAIT)
           : Math.round(hNorm * tauxHoraire);
-        mHs15  = Math.round(hHs15  * tauxHoraire * 1.15);
-        mHs40  = Math.round(hHs40  * tauxHoraire * 1.40);
-        mFerie = Math.round(hFerie * tauxHoraire * 1.60);
-        mHs100 = Math.round(hHs100 * tauxHoraire * 2.00);
+        // Au forfait, les heures supplémentaires sont rémunérées par un
+        // montant convenu (fiche du salarié), non par un calcul horaire.
+        mHs15  = forfait ? 0 : Math.round(hHs15  * tauxHoraire * 1.15);
+        mHs40  = forfait ? 0 : Math.round(hHs40  * tauxHoraire * 1.40);
+        mFerie = forfait ? 0 : Math.round(hFerie * tauxHoraire * 1.60);
+        mHs100 = forfait ? 0 : Math.round(hHs100 * tauxHoraire * 2.00);
         heuresTotales   = hNorm + hHs15 + hHs40 + hFerie + hHs100;
         joursPresents   = recap.joursTransport;
         joursAvecPanier = recap.nbPaniers;
@@ -304,10 +312,17 @@ export class EffectifService {
       } else if (forfait) {
         // Saisie journalière pour un salarié au forfait : on proratise sur 30 j.
         mNorm  = Math.round((salaireBase * Math.min(joursPresents, JOURS_FORFAIT)) / JOURS_FORFAIT);
-        mHs15 = 0; mHs40 = 0; mFerie = 0;
-        hHs15 = 0; hHs40 = 0; hFerie = 0;
+        mHs15 = 0; mHs40 = 0; mFerie = 0; mHs100 = 0;
+        hHs15 = 0; hHs40 = 0; hFerie = 0; hHs100 = 0;
         detailSemaines.length = 0;
       }
+
+      // Heures supplémentaires forfaitaires : montant mensuel convenu, versé
+      // dès lors que le salarié a travaillé dans le mois. Proratisé comme le
+      // salaire lorsque le mois est incomplet.
+      const hsForfaitaire = forfait && joursPresents > 0
+        ? Math.round((o.hsForfaitaire * Math.min(joursPresents, JOURS_FORFAIT)) / JOURS_FORFAIT)
+        : 0;
 
       const majNuit      = Math.round(nuitSemaineTotal * tauxHoraire * 0.60);
       const majNuitFerie = Math.round(nuitFerieTotal   * tauxHoraire * 1.00);
@@ -315,7 +330,7 @@ export class EffectifService {
       const primeTransport = tauxTransport * joursPresents;    // tous jours travaillés
 
       // Assiette de cotisations (primes de transport et panier exemptes)
-      const totalSalarial = mNorm + mHs15 + mHs40 + mFerie + mHs100 + majNuit + majNuitFerie;
+      const totalSalarial = mNorm + mHs15 + mHs40 + mFerie + mHs100 + hsForfaitaire + majNuit + majNuitFerie;
       const totalBrut     = totalSalarial + primePanier + primeTransport;
 
       // Les prestataires (gardiens, stagiaires — matricule non numérique)
@@ -365,6 +380,7 @@ export class EffectifService {
         montantHs100:  mHs100,
         sourceRecap,
         forfaitMensuel: forfait,
+        hsForfaitaire,
         detailSemaines,
         montantNormal:       mNorm,
         montantHs15:         mHs15,

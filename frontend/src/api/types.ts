@@ -457,6 +457,9 @@ export interface Ouvrier {
   salaireBase: number;    // Salaire mensuel brut FCFA
   tauxPanier: number;     // Prime panier FCFA/jour
   tauxTransport: number;  // Prime transport FCFA/jour
+  forfaitMensuel: boolean;     // payé au mois de 30 jours calendaires
+  exonereCotisations: boolean; // prestataire, non assujetti
+  hsForfaitaire: number;       // HS forfaitaires FCFA/mois
   tauxJournalier: number; // alias rétrocompat = salaireBase
   dateEntree: string;
   dateSortie: string | null;
@@ -520,6 +523,8 @@ export interface LigneResume {
   sourceRecap: boolean;
   /** true = rémunéré au mois de 30 jours calendaires (salaire proratisé) */
   forfaitMensuel: boolean;
+  /** Heures supplémentaires forfaitaires versées ce mois (FCFA) */
+  hsForfaitaire: number;
   detailSemaines: SemaineResume[];
   montantNormal: number;
   montantHs15: number;
