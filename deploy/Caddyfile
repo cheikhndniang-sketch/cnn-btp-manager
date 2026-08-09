@@ -2,6 +2,12 @@
 # Le certificat est obtenu et renouvelé tout seul dès que le domaine
 # pointe vers l'IP du VPS.
 
+# www.<domaine> → redirection permanente vers le domaine principal,
+# afin de n'avoir qu'une seule origine (cookies et PWA cohérents).
+www.{$DOMAIN} {
+	redir https://{$DOMAIN}{uri} permanent
+}
+
 {$DOMAIN} {
 	encode gzip zstd
 
