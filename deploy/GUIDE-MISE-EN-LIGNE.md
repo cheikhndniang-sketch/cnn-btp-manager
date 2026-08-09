@@ -14,30 +14,18 @@ Il ne reste qu'à le faire pointer vers le VPS (étape 3).
 
 ---
 
-## Étape 2 — Commander le VPS (~4,5 €/mois)
+## Étape 2 — VPS OVH ✅ FAIT
 
-**Hetzner CX22** (recommandé) — 2 vCPU, 4 Go RAM, 40 Go SSD
-→ <https://console.hetzner.cloud>
+VPS commandé chez OVH. Récupérez son **adresse IPv4** dans
+[l'espace client OVH](https://www.ovh.com/manager) → *Bare Metal Cloud* → *VPS*.
 
-Au moment de la commande :
-- **Image** : Ubuntu 24.04 LTS
-- **Localisation** : Falkenstein ou Helsinki (bonne latence vers Dakar)
-- **SSH Key** : ajoutez votre clé publique (voir ci-dessous) — plus sûr qu'un mot de passe
+- **Système** : Ubuntu 24.04 LTS (si un autre système a été installé,
+  réinstallez depuis l'espace client)
+- **Utilisateur SSH** : `ubuntu` (spécificité OVH)
 
-### Créer une clé SSH depuis Windows
-
-```powershell
-ssh-keygen -t ed25519 -C "cnn-btp"
-```
-
-Appuyez sur Entrée à chaque question. Puis affichez la clé **publique** à
-coller chez Hetzner :
-
-```powershell
-type $env:USERPROFILE\.ssh\id_ed25519.pub
-```
-
-À la fin, notez l'**adresse IPv4** du serveur (ex. `78.47.xx.xx`).
+> OVH envoie un e-mail avec les accès à la livraison. Si vous n'avez pas
+> fourni de clé SSH, un mot de passe root y figure — vous pourrez vous
+> connecter avec, puis suivre l'étape 4 normalement.
 
 ---
 
@@ -78,23 +66,44 @@ Cloudflare propage en 1 à 5 min.
 
 ---
 
-## Étape 4 — Préparer le serveur
+## Étape 4 — Préparer le serveur (OVH)
 
-Connectez-vous en SSH :
+### Se connecter en SSH
+
+Sur OVH, l'utilisateur par défaut est **`ubuntu`** (et non `root`) :
 
 ```powershell
-ssh root@<IP_DU_VPS>
+ssh ubuntu@<IP_DU_VPS>
 ```
 
-Puis, **sur le serveur** :
+> OVH envoie les informations de connexion par e-mail à la livraison du VPS.
+> Si vous avez fourni une clé SSH, la connexion se fait sans mot de passe.
+> Répondez `yes` à la question sur l'empreinte, à la première connexion.
+
+### Lancer l'installation
+
+**Sur le serveur** — noter le `sudo`, indispensable sur OVH :
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/cheikhndniang-sketch/cnn-btp-manager/main/deploy/install-vps.sh -o install-vps.sh
-bash install-vps.sh
+sudo bash install-vps.sh
 ```
 
 Le script installe Docker, active le pare-feu (SSH/HTTP/HTTPS seulement),
-met en place fail2ban et clone le projet dans `/opt/cnn-btp`.
+met en place fail2ban, clone le projet dans `/opt/cnn-btp` et vous autorise
+à utiliser Docker sans `sudo`.
+
+### ⚠️ Se reconnecter ensuite
+
+Le droit d'utiliser Docker ne prend effet qu'à la reconnexion :
+
+```bash
+exit
+```
+
+```powershell
+ssh ubuntu@<IP_DU_VPS>
+```
 
 ---
 
@@ -228,7 +237,9 @@ cd /opt/cnn-btp/deploy && docker compose -f docker-compose.prod.yml up -d --buil
 | Boucle de redirection infinie | Proxy Cloudflare orange + SSL « Flexible ». Passez le nuage en gris, ou SSL/TLS → **Full (strict)** |
 | `502 Bad Gateway` | Backend en démarrage : `docker compose -f docker-compose.prod.yml logs backend` |
 | Backend redémarre en boucle | Secret manquant dans `.env` : `docker compose -f docker-compose.prod.yml logs backend` |
-| Connexion SSH refusée | Vérifiez l'IP et que votre clé SSH est bien enregistrée chez Hetzner |
+| Connexion SSH refusée | Sur OVH, l'utilisateur est `ubuntu`, pas `root`. Vérifiez l'IP dans l'espace client |
+| `permission denied` sur docker | Vous ne vous êtes pas reconnecté après l'installation : `exit` puis `ssh ubuntu@<IP>` |
+| `Cannot connect to the Docker daemon` | Idem — reconnectez-vous en SSH |
 
 **Envoyez-moi la sortie de `docker compose logs` en cas de blocage** — c'est
 la première chose à regarder.

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Préparation d'un VPS Ubuntu 22.04/24.04 neuf pour CNN-BTPManager-Pro.
 #
-# À exécuter EN ROOT sur le VPS, une seule fois :
-#   bash install-vps.sh
+# À exécuter une seule fois sur le VPS.
+#   OVH / connecté en « ubuntu » :  sudo bash install-vps.sh
+#   Hetzner / connecté en root   :  bash install-vps.sh
 #
 # Installe Docker, durcit le pare-feu et prépare l'arborescence.
 # Le déploiement lui-même se fait ensuite avec docker compose (voir README).
@@ -14,7 +15,15 @@ REPO=https://github.com/cheikhndniang-sketch/cnn-btp-manager.git
 
 say() { printf '\n\033[1;36m▸ %s\033[0m\n' "$*"; }
 
-[ "$(id -u)" -eq 0 ] || { echo "Ce script doit être lancé en root (sudo)."; exit 1; }
+[ "$(id -u)" -eq 0 ] || {
+	echo "Ce script doit être lancé en root."
+	echo "Sur OVH (utilisateur « ubuntu ») :  sudo bash install-vps.sh"
+	exit 1
+}
+
+# Utilisateur non-root ayant lancé sudo (OVH : « ubuntu ») — il sera ajouté
+# au groupe docker pour ne pas avoir à préfixer chaque commande par sudo.
+ADMIN_USER="${SUDO_USER:-}"
 
 say "Mise à jour du système"
 apt-get update -qq
@@ -40,6 +49,12 @@ else
 	echo "Docker déjà présent — étape ignorée."
 fi
 
+if [ -n "$ADMIN_USER" ] && [ "$ADMIN_USER" != "root" ]; then
+	say "Autorisation de Docker pour l'utilisateur $ADMIN_USER"
+	usermod -aG docker "$ADMIN_USER"
+	echo "→ Reconnectez-vous en SSH pour que ce droit prenne effet."
+fi
+
 say "Configuration du pare-feu (SSH + HTTP + HTTPS uniquement)"
 ufw allow OpenSSH
 ufw allow 80/tcp
@@ -59,6 +74,12 @@ fi
 
 mkdir -p "$APP_DIR/deploy/backups"
 chmod +x "$APP_DIR/deploy/backup.sh"
+
+# Le dossier doit appartenir à l'administrateur pour qu'il puisse éditer
+# .env et lancer docker compose sans sudo.
+if [ -n "$ADMIN_USER" ] && [ "$ADMIN_USER" != "root" ]; then
+	chown -R "$ADMIN_USER":"$ADMIN_USER" "$APP_DIR"
+fi
 
 cat <<'EOF'
 
