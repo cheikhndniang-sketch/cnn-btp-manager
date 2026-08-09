@@ -529,6 +529,12 @@ function ResumeView({ siteId, mois, search }: { siteId: string; mois: string; se
                 {isOpen && (
                   <tr key={`${l.ouvrierId}-detail`} className="bg-slate-50 border-b border-slate-200">
                     <td colSpan={11} className="px-6 py-3">
+                      {l.sourceRecap && (
+                        <div className="mb-2 max-w-lg rounded-md bg-amber-50 border border-amber-200 px-3 py-1.5 text-[11px] text-amber-800">
+                          📋 Repris du récapitulatif de paie du mois — pas de pointage
+                          journalier saisi. Les totaux d'heures font foi tels quels.
+                        </div>
+                      )}
                       <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-xs max-w-lg">
                         {/* Taux unitaires arrondis à l'FCFA (calculés depuis tauxHoraire à 4 déc.) */}
                         {(() => {
@@ -553,6 +559,10 @@ function ResumeView({ siteId, mois, search }: { siteId: string; mois: string; se
                             {l.heuresFerie > 0 && <>
                               <div className="text-amber-600">Fériés/dim. ({l.heuresFerie}h × {thFe} F/h · +60 %)</div>
                               <div className="text-right font-medium text-amber-600">{formatFCFA(l.montantFerie)}</div>
+                            </>}
+                            {(l.heuresHs100 ?? 0) > 0 && <>
+                              <div className="text-red-600">H 100 % ({l.heuresHs100}h × {fmt4(l.tauxHoraire * 2)} F/h · taux double)</div>
+                              <div className="text-right font-medium text-red-600">{formatFCFA(l.montantHs100)}</div>
                             </>}
                             {l.heuresNuit > 0 && <>
                               <div className="text-indigo-500">Suppl. nuit semaine ({l.heuresNuit}h × {thN} F/h · +60 %)</div>
@@ -626,7 +636,7 @@ function ResumeView({ siteId, mois, search }: { siteId: string; mois: string; se
                         <div className="col-span-2 mt-3 pb-0.5 text-[10px] text-slate-400 uppercase tracking-wide font-semibold border-b border-slate-200">Retenues salariales</div>
                         <div className="text-red-500">IPRES Rég. Général (5,6 %)</div>
                         <div className="text-right font-medium text-red-500">-{formatFCFA(l.retIPRES)}</div>
-                        <div className="text-red-500">IPM salarié (50 % de 8 750 F)</div>
+                        <div className="text-red-500">Cotisation IPM</div>
                         <div className="text-right font-medium text-red-500">-{formatFCFA(l.retIPM)}</div>
                         <div className="text-red-500">TRIMF</div>
                         <div className="text-right font-medium text-red-500">-{formatFCFA(l.retTRIMF)}</div>
@@ -641,13 +651,13 @@ function ResumeView({ siteId, mois, search }: { siteId: string; mois: string; se
                         <div className="col-span-2 mt-3 pb-0.5 text-[10px] text-slate-400 uppercase tracking-wide font-semibold border-b border-slate-200">Charges patronales</div>
                         <div className="text-slate-500">IPRES employeur (8,4 %)</div>
                         <div className="text-right text-slate-500">{formatFCFA(l.charIPRES)}</div>
-                        <div className="text-slate-500">CSS Allocations familiales (7 %)</div>
+                        <div className="text-slate-500">CSS Allocations familiales (7 % du plafond)</div>
                         <div className="text-right text-slate-500">{formatFCFA(l.charCssAF)}</div>
-                        <div className="text-slate-500">CSS Accidents du travail (3 %)</div>
+                        <div className="text-slate-500">CSS Accidents du travail (5 % du plafond)</div>
                         <div className="text-right text-slate-500">{formatFCFA(l.charCssAT)}</div>
                         <div className="text-slate-500">CFCE (3 %)</div>
                         <div className="text-right text-slate-500">{formatFCFA(l.charCFCE)}</div>
-                        <div className="text-slate-500">IPM employeur (50 % de 8 750 F)</div>
+                        <div className="text-slate-500">IPM employeur</div>
                         <div className="text-right text-slate-500">{formatFCFA(l.charIPM)}</div>
                         <div className="font-medium text-slate-600 border-t border-slate-200 mt-1 pt-1">Total charges</div>
                         <div className="text-right font-medium text-slate-600 border-t border-slate-200 mt-1 pt-1">{formatFCFA(l.totalChargesPatronales)}</div>

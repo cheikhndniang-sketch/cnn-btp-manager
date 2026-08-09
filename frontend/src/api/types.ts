@@ -514,6 +514,10 @@ export interface LigneResume {
   heuresFerie: number;
   heuresNuit: number;
   heuresNuitFerie: number;
+  heuresHs100: number;   // H 100 % — taux double
+  montantHs100: number;
+  /** true = repris d'un récapitulatif de paie, sans pointage journalier */
+  sourceRecap: boolean;
   detailSemaines: SemaineResume[];
   montantNormal: number;
   montantHs15: number;

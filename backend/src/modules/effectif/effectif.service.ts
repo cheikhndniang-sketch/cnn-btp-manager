@@ -15,36 +15,26 @@ const MANAGERS: Role[] = [Role.ADMIN, Role.DIRECTEUR_PROJET, Role.DIRECTEUR_TRAV
 
 const TAUX_BASE = 173.33; // h normales mensuelles (40h × 52 / 12)
 
-// ── Cotisations sociales (taux 2024, Sénégal) ────────────────────────
-const IPRES_SAL   = 0.056;   // Salarié Régime Général
-const IPRES_EMP   = 0.084;   // Employeur Régime Général
-const IPRES_CEIL  = 260_000; // Plafond mensuel FCFA
+// ── Cotisations sociales — barème CSE Immobilier ─────────────────────
+// Taux relevés sur la paie réelle du chantier Sandaga (août 2025) et
+// validés sur 136 bulletins : charges patronales exactes 136/136,
+// retenues salariales 123/126 (les 3 écarts sont des retenues
+// exceptionnelles ponctuelles, hors formule).
+//
+// L'assiette est le salaire hors primes : transport et panier sont exonérés.
 
-const CSS_AF_RATE = 0.07;    // Allocations Familiales (employeur)
-const CSS_AT_RATE = 0.03;    // Accidents du Travail BTP (employeur)
-const CFCE_RATE   = 0.03;    // CFCE (employeur)
+const IPRES_SAL = 0.056; // Salarié — non plafonné
+const IPRES_EMP = 0.084; // Employeur
+const CFCE_RATE = 0.03;  // CFCE (employeur)
 
-const IPM_SAL = 4_375;       // Part salarié (50 % de 8 750 F/mois)
-const IPM_EMP = 4_375;       // Part employeur
+const IPM_SAL = 8_750;   // IPM intégralement à la charge du salarié
+const IPM_EMP = 7_000;   // Part employeur, forfaitaire
+const TRIMF   = 250;     // Forfait mensuel
 
-function calcTRIMF(base: number): number {
-  if (base <  25_000)  return 0;
-  if (base <= 75_000)  return 167;    // 500 F/trim ÷ 3
-  if (base <= 250_000) return 500;    // 1 500 F/trim ÷ 3
-  if (base <= 400_000) return 1_000;  // 3 000 F/trim ÷ 3
-  return 1_200;                       // 3 600 F/trim ÷ 3
-}
-
-// Barème IRPP annuel (CGI Sénégal) — calcul sur salaire mensuel annualisé
-function calcIRPP(baseMensuel: number, ipresMensuel: number): number {
-  const rniAnnuel = Math.max(0, (baseMensuel * 0.70 - ipresMensuel) * 12);
-  let tax = 0;
-  if      (rniAnnuel > 8_000_000) tax = (rniAnnuel - 8_000_000) * 0.40 + 4_000_000 * 0.35 + 2_500_000 * 0.30 + 870_000 * 0.20;
-  else if (rniAnnuel > 4_000_000) tax = (rniAnnuel - 4_000_000) * 0.35 + 2_500_000 * 0.30 + 870_000 * 0.20;
-  else if (rniAnnuel > 1_500_000) tax = (rniAnnuel - 1_500_000) * 0.30 + 870_000 * 0.20;
-  else if (rniAnnuel >   630_000) tax = (rniAnnuel - 630_000) * 0.20;
-  return Math.round(tax / 12);
-}
+// CSS : cotisations assises sur le plafond mensuel de 63 000 F, donc
+// forfaitaires quel que soit le salaire.
+const CSS_AF_FORFAIT = 4_410; // 7 % × 63 000 — Allocations familiales
+const CSS_AT_FORFAIT = 3_150; // 5 % × 63 000 — Accidents du travail (BTP)
 
 function isoWeekKey(date: Date): string {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
@@ -179,8 +169,18 @@ export class EffectifService {
     const debut = new Date(year, month - 2, 21); // 21 du mois précédent
     const fin   = new Date(year, month - 1, 20); // 20 du mois courant
 
+    // Récapitulatifs repris des états de paie : ils font foi pour les mois
+    // antérieurs à la saisie journalière dans l'application.
+    const recaps = await this.prisma.recapMensuel.findMany({ where: { siteId, mois } });
+    const recapParOuvrier = new Map(recaps.map((r) => [r.ouvrierId, r]));
+
     const ouvriers = await this.prisma.ouvrier.findMany({
-      where: { siteId, actif: true },
+      where: {
+        siteId,
+        ...(recaps.length > 0
+          ? { OR: [{ actif: true }, { id: { in: recaps.map((r) => r.ouvrierId) } }] }
+          : { actif: true }),
+      },
       include: {
         pointages: {
           where: { date: { gte: debut, lte: fin }, present: true },
@@ -271,31 +271,62 @@ export class EffectifService {
         });
       }
 
+      // Aucun pointage journalier saisi pour ce mois : le récapitulatif de
+      // paie fait foi et est repris tel quel, sans reconstituer de journées.
+      const recap = recapParOuvrier.get(o.id);
+      const sourceRecap = o.pointages.length === 0 && !!recap;
+      let hHs100 = 0;
+      let mHs100 = 0;
+      if (sourceRecap && recap) {
+        hNorm  = Number(recap.heuresNormales);
+        hHs15  = Number(recap.heuresHs15);
+        hHs40  = Number(recap.heuresHs40);
+        hFerie = Number(recap.heuresHs60);   // H 60 % → férié/dimanche
+        hHs100 = Number(recap.heuresHs100);  // H 100 % → taux double
+        mNorm  = Math.round(hNorm  * tauxHoraire);
+        mHs15  = Math.round(hHs15  * tauxHoraire * 1.15);
+        mHs40  = Math.round(hHs40  * tauxHoraire * 1.40);
+        mFerie = Math.round(hFerie * tauxHoraire * 1.60);
+        mHs100 = Math.round(hHs100 * tauxHoraire * 2.00);
+        heuresTotales   = hNorm + hHs15 + hHs40 + hFerie + hHs100;
+        joursPresents   = recap.joursTransport;
+        joursAvecPanier = recap.nbPaniers;
+        detailSemaines.length = 0; // pas de découpage hebdomadaire disponible
+      }
+
       const majNuit      = Math.round(nuitSemaineTotal * tauxHoraire * 0.60);
       const majNuitFerie = Math.round(nuitFerieTotal   * tauxHoraire * 1.00);
       const primePanier    = tauxPanier    * joursAvecPanier;  // ≥11h/jour
       const primeTransport = tauxTransport * joursPresents;    // tous jours travaillés
 
       // Assiette de cotisations (primes de transport et panier exemptes)
-      const totalSalarial = mNorm + mHs15 + mHs40 + mFerie + majNuit + majNuitFerie;
+      const totalSalarial = mNorm + mHs15 + mHs40 + mFerie + mHs100 + majNuit + majNuitFerie;
       const totalBrut     = totalSalarial + primePanier + primeTransport;
 
+      // Les prestataires (gardiens, stagiaires — matricule non numérique)
+      // ne sont pas assujettis aux cotisations sociales.
+      const cotisable = !o.exonereCotisations && totalSalarial > 0;
+
       // ── Retenues salariales ─────────────────────────────────────────
-      const baseIPRES     = Math.min(totalSalarial, IPRES_CEIL);
-      const retIPRES      = Math.round(baseIPRES * IPRES_SAL);
-      const retIPM        = joursPresents > 0 ? IPM_SAL : 0;
-      const retTRIMF      = calcTRIMF(totalSalarial);
-      const retIRPP       = calcIRPP(totalSalarial, retIPRES);
+      const retIPRES      = cotisable ? Math.round(totalSalarial * IPRES_SAL) : 0;
+      const retIPM        = cotisable ? IPM_SAL : 0;
+      const retTRIMF      = cotisable ? TRIMF : 0;
+      // IRPP : la quasi-totalité des salariés en est exonérée (abattement +
+      // charges de famille). Saisi au cas par cas plutôt que calculé.
+      const retIRPP       = 0;
       const totalRetenues = retIPRES + retIPM + retTRIMF + retIRPP;
       const salaireNet    = totalBrut - totalRetenues;
 
       // ── Charges patronales ──────────────────────────────────────────
-      const charIPRES              = Math.round(baseIPRES * IPRES_EMP);
-      const charCssAF              = Math.round(totalSalarial * CSS_AF_RATE);
-      const charCssAT              = Math.round(totalSalarial * CSS_AT_RATE);
-      const charCFCE               = Math.round(totalSalarial * CFCE_RATE);
-      const charIPM                = joursPresents > 0 ? IPM_EMP : 0;
-      const totalChargesPatronales = charIPRES + charCssAF + charCssAT + charCFCE + charIPM;
+      // IPRES (8,4 %) et CFCE (3 %) sont arrondis ensemble pour coller au
+      // franc près au calcul de paie existant ; le CFCE absorbe l'arrondi.
+      const partProportionnelle    = cotisable ? Math.round(totalSalarial * (IPRES_EMP + CFCE_RATE)) : 0;
+      const charIPRES              = cotisable ? Math.round(totalSalarial * IPRES_EMP) : 0;
+      const charCFCE               = partProportionnelle - charIPRES;
+      const charCssAF              = cotisable ? CSS_AF_FORFAIT : 0;
+      const charCssAT              = cotisable ? CSS_AT_FORFAIT : 0;
+      const charIPM                = cotisable ? IPM_EMP : 0;
+      const totalChargesPatronales = charIPRES + charCFCE + charCssAF + charCssAT + charIPM;
       const coutTotalEmployeur     = totalBrut + totalChargesPatronales;
 
       return {
@@ -315,6 +346,9 @@ export class EffectifService {
         heuresFerie:   Math.round(hFerie * 10) / 10,
         heuresNuit:    nuitSemaineTotal,
         heuresNuitFerie: nuitFerieTotal,
+        heuresHs100:   hHs100,
+        montantHs100:  mHs100,
+        sourceRecap,
         detailSemaines,
         montantNormal:       mNorm,
         montantHs15:         mHs15,

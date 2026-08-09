@@ -91,6 +91,7 @@ model Site {
   avenants      Avenant[]
   ouvriers      Ouvrier[]
   pointages     Pointage[]
+  recapsMensuels RecapMensuel[]
 
   @@index([status])
 }
@@ -432,6 +433,8 @@ model Ouvrier {
   salaireBase    BigInt               @default(0) // Salaire mensuel brut FCFA
   tauxPanier     Int                  @default(0) // Prime panier FCFA/jour
   tauxTransport  Int                  @default(0) // Prime transport FCFA/jour
+  // Prestataires (gardiens, stagiaires) : non assujettis aux cotisations
+  exonereCotisations Boolean          @default(false)
   dateEntree    DateTime             @db.Date
   dateSortie    DateTime?            @db.Date
   actif         Boolean              @default(true)
@@ -442,6 +445,7 @@ model Ouvrier {
 
   site      Site      @relation(fields: [siteId], references: [id], onDelete: Cascade)
   pointages Pointage[]
+  recaps    RecapMensuel[]
 
   @@index([siteId])
   @@index([siteId, actif])
@@ -466,6 +470,39 @@ model Pointage {
   @@unique([ouvrierId, date])
   @@index([siteId, date])
   @@index([ouvrierId])
+}
+
+/// Récapitulatif mensuel de pointage repris des états de paie existants.
+/// Les mois antérieurs à l'informatisation ne disposent que de totaux
+/// agrégés (pas de détail par jour) : ils sont conservés tels quels et
+/// font foi, sans recalcul à partir des pointages.
+model RecapMensuel {
+  id        String @id @default(uuid())
+  ouvrierId String
+  siteId    String
+  mois      String // AAAA-MM — période du 21 du mois précédent au 20
+
+  heuresNormales Decimal @default(0) @db.Decimal(7, 2)
+  heuresHs15     Decimal @default(0) @db.Decimal(7, 2)
+  heuresHs40     Decimal @default(0) @db.Decimal(7, 2)
+  heuresHs60     Decimal @default(0) @db.Decimal(7, 2)
+  heuresHs100    Decimal @default(0) @db.Decimal(7, 2)
+  nbPaniers      Int     @default(0)
+  joursTransport Int     @default(0)
+
+  /// Emploi tel qu'inscrit sur l'état de paie du mois
+  emploi String?
+  source String? // fichier d'origine
+  notes  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ouvrier Ouvrier @relation(fields: [ouvrierId], references: [id], onDelete: Cascade)
+  site    Site    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([ouvrierId, mois])
+  @@index([siteId, mois])
 }
 
 model AuditLog {
