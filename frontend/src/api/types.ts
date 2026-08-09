@@ -481,6 +481,22 @@ export interface Pointage {
   ouvrier: Pick<Ouvrier, 'id' | 'nom' | 'prenom' | 'fonction' | 'matricule'>;
 }
 
+/** Détail d'une semaine ISO — l'arrondi est appliqué semaine par semaine. */
+export interface SemaineResume {
+  semaine: string;   // clé ISO, ex. « 2026-W26 »
+  debut: string;     // YYYY-MM-DD
+  fin: string;       // YYYY-MM-DD
+  heuresNormales: number;
+  heuresHs15: number;
+  heuresHs40: number;
+  heuresFerie: number;
+  montantNormal: number;
+  montantHs15: number;
+  montantHs40: number;
+  montantFerie: number;
+  total: number;
+}
+
 export interface LigneResume {
   ouvrierId: string;
   matricule: string | null;
@@ -498,6 +514,7 @@ export interface LigneResume {
   heuresFerie: number;
   heuresNuit: number;
   heuresNuitFerie: number;
+  detailSemaines: SemaineResume[];
   montantNormal: number;
   montantHs15: number;
   montantHs40: number;

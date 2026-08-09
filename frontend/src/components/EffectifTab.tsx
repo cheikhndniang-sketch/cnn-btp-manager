@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { effectifApi, type CreateOuvrierPayload } from '@/api/endpoints';
 import { QUALIFICATION_LABELS, type Ouvrier, type Pointage, type QualificationOuvrier } from '@/api/types';
-import { formatFCFA } from '@/lib/format';
+import { formatFCFA, formatJourMois } from '@/lib/format';
 import {
   MUT_POINTAGE_UPSERT,
   MUT_POINTAGE_DELETE,
@@ -574,6 +574,53 @@ function ResumeView({ siteId, mois, search }: { siteId: string; mois: string; se
                         </>}
                         <div className="font-semibold text-navy border-t border-slate-200 mt-1 pt-1">Total brut</div>
                         <div className="text-right font-bold text-green border-t border-slate-200 mt-1 pt-1">{formatFCFA(l.totalBrut)}</div>
+
+                        {/* ── Justification semaine par semaine ── */}
+                        {(l.detailSemaines ?? []).length > 0 && (
+                          <div className="col-span-2 mt-3">
+                            <div className="pb-0.5 text-[10px] text-slate-400 uppercase tracking-wide font-semibold border-b border-slate-200">
+                              Détail par semaine — l'arrondi s'applique à chaque semaine
+                            </div>
+                            <table className="w-full mt-1 text-[11px] tabular-nums">
+                              <thead>
+                                <tr className="text-slate-400">
+                                  <th className="text-left font-medium py-0.5">Semaine</th>
+                                  <th className="text-right font-medium">Norm.</th>
+                                  <th className="text-right font-medium text-blue-600">+15 %</th>
+                                  <th className="text-right font-medium text-orange-500">+40 %</th>
+                                  <th className="text-right font-medium text-amber-600">Férié</th>
+                                  <th className="text-right font-medium">Montant</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {l.detailSemaines.map((s) => (
+                                  <tr key={s.semaine} className="border-t border-slate-100">
+                                    <td className="py-0.5 text-slate-500 whitespace-nowrap">
+                                      {formatJourMois(s.debut)} – {formatJourMois(s.fin)}
+                                    </td>
+                                    <td className="text-right">{s.heuresNormales > 0 ? `${s.heuresNormales}h` : '—'}</td>
+                                    <td className="text-right text-blue-600">{s.heuresHs15 > 0 ? `${s.heuresHs15}h` : '—'}</td>
+                                    <td className="text-right text-orange-500">{s.heuresHs40 > 0 ? `${s.heuresHs40}h` : '—'}</td>
+                                    <td className="text-right text-amber-600">{s.heuresFerie > 0 ? `${s.heuresFerie}h` : '—'}</td>
+                                    <td className="text-right font-medium text-navy">{formatFCFA(s.total)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                              <tfoot>
+                                <tr className="border-t border-slate-300 font-semibold text-navy">
+                                  <td className="py-0.5">Total heures</td>
+                                  <td className="text-right">{l.heuresNormales}h</td>
+                                  <td className="text-right text-blue-600">{l.heuresHs15 > 0 ? `${l.heuresHs15}h` : '—'}</td>
+                                  <td className="text-right text-orange-500">{l.heuresHs40 > 0 ? `${l.heuresHs40}h` : '—'}</td>
+                                  <td className="text-right text-amber-600">{l.heuresFerie > 0 ? `${l.heuresFerie}h` : '—'}</td>
+                                  <td className="text-right">
+                                    {formatFCFA(l.montantNormal + l.montantHs15 + l.montantHs40 + l.montantFerie)}
+                                  </td>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          </div>
+                        )}
 
                         {/* ── Retenues salariales ── */}
                         <div className="col-span-2 mt-3 pb-0.5 text-[10px] text-slate-400 uppercase tracking-wide font-semibold border-b border-slate-200">Retenues salariales</div>

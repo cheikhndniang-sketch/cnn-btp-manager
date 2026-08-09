@@ -199,8 +199,13 @@ export class EffectifService {
       const tauxPanier = o.tauxPanier ?? 0;
       const tauxTransport = o.tauxTransport ?? 0;
 
-      // Regroupement par semaine ISO
-      const semaines = new Map<string, { wd: number; fe: number; nWd: number; nFe: number }>();
+      // Regroupement par semaine ISO (l'arrondi se fait par semaine : chaque
+      // semaine est l'unité légale de décompte des heures supplémentaires).
+      type Semaine = {
+        wd: number; fe: number; nWd: number; nFe: number;
+        debut: Date; fin: Date;
+      };
+      const semaines = new Map<string, Semaine>();
       let joursPresents = 0;
       let joursAvecPanier = 0;
       let heuresTotales = 0;
@@ -215,9 +220,12 @@ export class EffectifService {
         const fe = p.jourFerie ?? false;
         heuresTotales += h;
 
-        const wk = isoWeekKey(new Date(p.date));
-        if (!semaines.has(wk)) semaines.set(wk, { wd: 0, fe: 0, nWd: 0, nFe: 0 });
+        const jour = new Date(p.date);
+        const wk = isoWeekKey(jour);
+        if (!semaines.has(wk)) semaines.set(wk, { wd: 0, fe: 0, nWd: 0, nFe: 0, debut: jour, fin: jour });
         const s = semaines.get(wk)!;
+        if (jour < s.debut) s.debut = jour;
+        if (jour > s.fin)   s.fin   = jour;
         if (fe) { s.fe += h; s.nFe += hn; nuitFerieTotal += hn; }
         else     { s.wd += h; s.nWd += hn; nuitSemaineTotal += hn; }
       }
@@ -226,16 +234,41 @@ export class EffectifService {
       let hNorm = 0, hHs15 = 0, hHs40 = 0, hFerie = 0;
       let mNorm = 0, mHs15 = 0, mHs40 = 0, mFerie = 0;
 
-      for (const [, s] of semaines) {
+      // Détail par semaine : permet de justifier ligne à ligne le total
+      // mensuel, l'arrondi étant appliqué à chaque semaine.
+      const detailSemaines: {
+        semaine: string; debut: string; fin: string;
+        heuresNormales: number; heuresHs15: number; heuresHs40: number; heuresFerie: number;
+        montantNormal: number; montantHs15: number; montantHs40: number; montantFerie: number;
+        total: number;
+      }[] = [];
+
+      for (const [wk, s] of semaines) {
         const norm = Math.min(s.wd, 40);
         const hs1  = Math.max(0, Math.min(s.wd - 40, 8));
         const hs2  = Math.max(0, s.wd - 48);
         hNorm  += norm; hHs15 += hs1; hHs40 += hs2; hFerie += s.fe;
         // Arrondi sur le montant de chaque catégorie (pas sur le taux)
-        mNorm  += Math.round(norm  * tauxHoraire);
-        mHs15  += Math.round(hs1   * tauxHoraire * 1.15);
-        mHs40  += Math.round(hs2   * tauxHoraire * 1.40);
-        mFerie += Math.round(s.fe  * tauxHoraire * 1.60);
+        const sNorm  = Math.round(norm  * tauxHoraire);
+        const sHs15  = Math.round(hs1   * tauxHoraire * 1.15);
+        const sHs40  = Math.round(hs2   * tauxHoraire * 1.40);
+        const sFerie = Math.round(s.fe  * tauxHoraire * 1.60);
+        mNorm  += sNorm; mHs15 += sHs15; mHs40 += sHs40; mFerie += sFerie;
+
+        detailSemaines.push({
+          semaine: wk,
+          debut: s.debut.toISOString().slice(0, 10),
+          fin:   s.fin.toISOString().slice(0, 10),
+          heuresNormales: Math.round(norm * 10) / 10,
+          heuresHs15:     Math.round(hs1  * 10) / 10,
+          heuresHs40:     Math.round(hs2  * 10) / 10,
+          heuresFerie:    Math.round(s.fe * 10) / 10,
+          montantNormal: sNorm,
+          montantHs15:   sHs15,
+          montantHs40:   sHs40,
+          montantFerie:  sFerie,
+          total: sNorm + sHs15 + sHs40 + sFerie,
+        });
       }
 
       const majNuit      = Math.round(nuitSemaineTotal * tauxHoraire * 0.60);
@@ -282,6 +315,7 @@ export class EffectifService {
         heuresFerie:   Math.round(hFerie * 10) / 10,
         heuresNuit:    nuitSemaineTotal,
         heuresNuitFerie: nuitFerieTotal,
+        detailSemaines,
         montantNormal:       mNorm,
         montantHs15:         mHs15,
         montantHs40:         mHs40,
