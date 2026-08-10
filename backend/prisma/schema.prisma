@@ -520,6 +520,9 @@ model AvancementCumul {
   date     DateTime @db.Date
   libelle  String
   montantHtCumul BigInt
+  /// Coût réel engagé cumulé à cette date (compte d'exploitation).
+  /// Nécessaire à l'indice de performance coût ; nul si non renseigné.
+  coutReelCumul  BigInt?
   source   String?
 
   createdAt DateTime @default(now())

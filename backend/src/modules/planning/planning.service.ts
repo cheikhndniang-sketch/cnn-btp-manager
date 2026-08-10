@@ -135,22 +135,36 @@ export class PlanningService {
           ? Math.round((Number(proche.montantHtCumul) / marcheHt) * 1000) / 10
           : null,
         realiseHt: proche ? Number(proche.montantHtCumul) : null,
+        coutReelHt: proche?.coutReelCumul != null ? Number(proche.coutReelCumul) : null,
         libelle: proche?.libelle ?? null,
       };
     });
 
-    // Indice de performance délai au dernier point connu
+    // Indices de performance au dernier relevé connu.
+    //   IPD = valeur acquise / valeur planifiée
+    //   IPC = valeur acquise / coût réel engagé
     const dernier = [...courbe].reverse().find((c) => c.realisePct !== null);
-    const spi = dernier && dernier.planifiePct > 0
+    const ipd = dernier && dernier.planifiePct > 0
       ? Math.round((dernier.realisePct! / dernier.planifiePct) * 100) / 100
+      : null;
+
+    const dernierCout = [...courbe].reverse().find(
+      (c) => c.coutReelHt !== null && c.realiseHt !== null,
+    );
+    const ipc = dernierCout && dernierCout.coutReelHt! > 0
+      ? Math.round((dernierCout.realiseHt! / dernierCout.coutReelHt!) * 100) / 100
       : null;
 
     return {
       marcheHt,
       courbe,
       dernierReleve: dernier ?? null,
-      spi,
+      dernierCout: dernierCout ?? null,
+      ipd,
+      ipc,
+      spi: ipd, // rétrocompat
       nbPointsReleves: points.length,
+      nbPointsAvecCout: points.filter((p) => p.coutReelCumul != null).length,
       nbTachesDatees: taches.length,
     };
   }

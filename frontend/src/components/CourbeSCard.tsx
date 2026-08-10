@@ -43,9 +43,26 @@ export function CourbeSCard({ siteId }: { siteId: string }) {
   };
 
   const releves = pts.map((p, i) => ({ p, i })).filter((o) => o.p.realisePct !== null);
-  const spi = data.spi;
-  const enRetard = spi !== null && spi < 1;
   const d = data.dernierReleve;
+
+  const Indice = ({ code, val, libelle }: { code: string; val: number | null; libelle: string }) => (
+    <div className="text-right">
+      <div className="text-xs uppercase tracking-wide text-slate-500">{code}</div>
+      {val === null ? (
+        <>
+          <div className="text-2xl font-bold text-slate-300">—</div>
+          <div className="text-[10px] text-slate-400">non calculable</div>
+        </>
+      ) : (
+        <>
+          <div className={`text-2xl font-bold ${val < 1 ? 'text-red' : 'text-green'}`}>
+            {val.toFixed(2)}
+          </div>
+          <div className="text-[10px] text-slate-400">{libelle}</div>
+        </>
+      )}
+    </div>
+  );
 
   return (
     <div className="card">
@@ -57,17 +74,12 @@ export function CourbeSCard({ siteId }: { siteId: string }) {
             {data.nbPointsReleves} attachements
           </p>
         </div>
-        {spi !== null && (
-          <div className="text-right">
-            <div className="text-xs uppercase tracking-wide text-slate-500">SPI</div>
-            <div className={`text-2xl font-bold ${enRetard ? 'text-red' : 'text-green'}`}>
-              {spi.toFixed(2)}
-            </div>
-            <div className="text-[10px] text-slate-400">
-              {enRetard ? 'en retard sur le planning' : 'conforme ou en avance'}
-            </div>
-          </div>
-        )}
+        <div className="flex gap-6">
+          <Indice code="IPD" val={data.ipd}
+                  libelle={(data.ipd ?? 1) < 1 ? 'retard sur le planning' : 'conforme au planning'} />
+          <Indice code="IPC" val={data.ipc}
+                  libelle={(data.ipc ?? 1) < 1 ? 'dépassement de coût' : 'coût maîtrisé'} />
+        </div>
       </div>
 
       <div className="overflow-x-auto">
@@ -111,6 +123,12 @@ export function CourbeSCard({ siteId }: { siteId: string }) {
         )}
       </div>
 
+      {data.nbPointsAvecCout === 0 && (
+        <p className="text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-md px-3 py-1.5 mt-2">
+          L'IPC nécessite le coût réel engagé (compte d'exploitation), non
+          encore renseigné. Seul l'IPD est disponible pour l'instant.
+        </p>
+      )}
       {data.nbTachesDatees > 0 && pts[0]?.planifiePct === 0 && (
         <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-1.5 mt-2">
           ⚠️ Le planning détaillé ne couvre pas toute la durée du chantier : la

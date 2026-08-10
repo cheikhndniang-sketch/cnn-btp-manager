@@ -625,6 +625,7 @@ export interface PointCourbeS {
   planifiePct: number;
   realisePct: number | null;
   realiseHt: number | null;
+  coutReelHt: number | null;
   libelle: string | null;
 }
 
@@ -632,7 +633,13 @@ export interface CourbeS {
   marcheHt: number;
   courbe: PointCourbeS[];
   dernierReleve: PointCourbeS | null;
+  dernierCout: PointCourbeS | null;
+  /** Indice de performance délai = valeur acquise / valeur planifiée */
+  ipd: number | null;
+  /** Indice de performance coût = valeur acquise / coût réel engagé */
+  ipc: number | null;
   spi: number | null;
   nbPointsReleves: number;
+  nbPointsAvecCout: number;
   nbTachesDatees: number;
 }
