@@ -617,3 +617,22 @@ export interface RecapHeures {
     heuresFerie: number; heuresHs100: number; total: number;
   };
 }
+
+// ── Courbe en S ───────────────────────────────────────────────────────
+
+export interface PointCourbeS {
+  date: string; mois: string;
+  planifiePct: number;
+  realisePct: number | null;
+  realiseHt: number | null;
+  libelle: string | null;
+}
+
+export interface CourbeS {
+  marcheHt: number;
+  courbe: PointCourbeS[];
+  dernierReleve: PointCourbeS | null;
+  spi: number | null;
+  nbPointsReleves: number;
+  nbTachesDatees: number;
+}

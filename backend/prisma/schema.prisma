@@ -92,6 +92,7 @@ model Site {
   ouvriers      Ouvrier[]
   pointages     Pointage[]
   recapsMensuels RecapMensuel[]
+  avancements    AvancementCumul[]
 
   @@index([status])
 }
@@ -509,6 +510,25 @@ model RecapMensuel {
 
   @@unique([ouvrierId, mois])
   @@index([siteId, mois])
+}
+
+/// Point d'avancement financier cumulé, relevé sur un attachement mensuel.
+/// Sert de base à la courbe en S (réalisé) face au planning (prévu).
+model AvancementCumul {
+  id       String   @id @default(uuid())
+  siteId   String
+  date     DateTime @db.Date
+  libelle  String
+  montantHtCumul BigInt
+  source   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([siteId, date])
+  @@index([siteId, date])
 }
 
 model AuditLog {

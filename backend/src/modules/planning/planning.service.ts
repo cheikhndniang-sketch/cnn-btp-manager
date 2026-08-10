@@ -68,6 +68,93 @@ export class PlanningService {
 
   // ---- Lots ----
 
+  /**
+   * Courbe en S : avancement planifié (d'après les dates du planning) face à
+   * l'avancement réellement constaté sur les attachements mensuels.
+   *
+   * Le planifié se calcule sur les tâches datées ; le réalisé provient des
+   * cumuls relevés sur les attachements, donc uniquement aux dates connues.
+   */
+  async courbeS(siteId: string, actor: Actor) {
+    await this.sites.assertCanAccess(siteId, actor);
+
+    const site = await this.prisma.site.findUniqueOrThrow({ where: { id: siteId } });
+    const [taches, points] = await Promise.all([
+      this.prisma.task.findMany({
+        where: { lot: { siteId }, startDate: { not: null }, endDate: { not: null } },
+        select: { startDate: true, endDate: true, weight: true, progressPct: true },
+      }),
+      this.prisma.avancementCumul.findMany({
+        where: { siteId }, orderBy: { date: 'asc' },
+      }),
+    ]);
+
+    const marcheHt = Number(site.marcheHt);
+    const poidsTotal = taches.reduce((a, t) => a + (t.weight || 1), 0) || 1;
+
+    // Bornes : du démarrage du chantier à la dernière date connue
+    const debut = new Date(site.startDate);
+    const finPlanning = taches.reduce(
+      (m, t) => (t.endDate! > m ? t.endDate! : m),
+      site.endDatePlanned ?? site.startDate,
+    );
+    const dernierPoint = points.length ? points[points.length - 1].date : debut;
+    const fin = finPlanning > dernierPoint ? finPlanning : dernierPoint;
+
+    // Un point par fin de mois
+    const jalons: Date[] = [];
+    const curseur = new Date(Date.UTC(debut.getUTCFullYear(), debut.getUTCMonth() + 1, 0));
+    while (curseur <= fin) {
+      jalons.push(new Date(curseur));
+      curseur.setUTCMonth(curseur.getUTCMonth() + 2, 0);
+    }
+
+    const parDate = new Map(
+      points.map((p) => [p.date.toISOString().slice(0, 10), p]),
+    );
+
+    const courbe = jalons.map((d) => {
+      const planifie = taches.reduce(
+        (a, t) => a + (t.weight || 1) * plannedProgress(t.startDate, t.endDate, d),
+        0,
+      ) / poidsTotal;
+
+      const cle = d.toISOString().slice(0, 10);
+      const pt = parDate.get(cle);
+      // Un attachement peut être daté du 30 quand le mois en compte 31.
+      const proche = pt ?? points.find(
+        (p) => p.date.getUTCFullYear() === d.getUTCFullYear()
+            && p.date.getUTCMonth() === d.getUTCMonth(),
+      );
+
+      return {
+        date: cle,
+        mois: cle.slice(0, 7),
+        planifiePct: Math.round(planifie * 10) / 10,
+        realisePct: proche && marcheHt > 0
+          ? Math.round((Number(proche.montantHtCumul) / marcheHt) * 1000) / 10
+          : null,
+        realiseHt: proche ? Number(proche.montantHtCumul) : null,
+        libelle: proche?.libelle ?? null,
+      };
+    });
+
+    // Indice de performance délai au dernier point connu
+    const dernier = [...courbe].reverse().find((c) => c.realisePct !== null);
+    const spi = dernier && dernier.planifiePct > 0
+      ? Math.round((dernier.realisePct! / dernier.planifiePct) * 100) / 100
+      : null;
+
+    return {
+      marcheHt,
+      courbe,
+      dernierReleve: dernier ?? null,
+      spi,
+      nbPointsReleves: points.length,
+      nbTachesDatees: taches.length,
+    };
+  }
+
   async listLots(siteId: string, actor: Actor): Promise<LotView[]> {
     await this.sites.assertCanAccess(siteId, actor);
     const lots = await this.prisma.lot.findMany({

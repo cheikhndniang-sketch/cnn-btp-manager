@@ -11,6 +11,7 @@ import { DocumentsTab } from '@/components/DocumentsTab';
 import { TSTab } from '@/components/TSTab';
 import { JournalTab } from '@/components/JournalTab';
 import { EffectifTab } from '@/components/EffectifTab';
+import { CourbeSCard } from '@/components/CourbeSCard';
 import { formatDate, formatFCFA } from '@/lib/format';
 import { exportRapportToPdf } from '@/lib/exportRapport';
 import { ROLE_LABELS, type Role, type SiteStatus } from '@/api/types';
@@ -328,7 +329,9 @@ export function SiteDetailPage() {
           </div>
 
           {tab === 'general' ? (
-            <div className="grid lg:grid-cols-2 gap-4">
+            <div className="space-y-4">
+              <CourbeSCard siteId={site.id} />
+              <div className="grid lg:grid-cols-2 gap-4">
               {/* Informations */}
               <div className="card">
                 <h2 className="font-semibold text-navy mb-3">Informations</h2>
@@ -388,6 +391,7 @@ export function SiteDetailPage() {
                     ))}
                   </ul>
                 )}
+                </div>
               </div>
             </div>
           ) : tab === 'planning' ? (

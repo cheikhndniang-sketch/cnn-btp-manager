@@ -67,6 +67,14 @@ export class PlanningController {
 
   // ---- Lots ----
 
+  @Get('courbe-s')
+  courbeS(
+    @Param('siteId') siteId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.planning.courbeS(siteId, this.actor(user));
+  }
+
   @Get('lots')
   listLots(
     @Param('siteId') siteId: string,
