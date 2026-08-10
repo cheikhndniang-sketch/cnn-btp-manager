@@ -593,3 +593,27 @@ export interface RecapEffectif {
   pctProductifs: number;
   evolution: MoisEffectif[];
 }
+
+// ── Récapitulatif des heures (semaine / mois, par tranche) ────────────
+
+export interface SemaineHeures {
+  semaine: string; debut: string; fin: string;
+  heuresNormales: number; heuresHs15: number; heuresHs40: number;
+  heuresFerie: number; total: number;
+}
+
+export interface MoisHeures {
+  mois: string;
+  heuresNormales: number; heuresHs15: number; heuresHs40: number;
+  heuresFerie: number; heuresHs100: number; total: number;
+  source: 'pointage' | 'recap';
+}
+
+export interface RecapHeures {
+  semaines: SemaineHeures[];
+  mois: MoisHeures[];
+  totaux: {
+    heuresNormales: number; heuresHs15: number; heuresHs40: number;
+    heuresFerie: number; heuresHs100: number; total: number;
+  };
+}

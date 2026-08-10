@@ -102,6 +102,16 @@ export class EffectifController {
     return this.effectif.resumeMensuel(siteId, this.actor(user), m);
   }
 
+  // ── Récapitulatif des heures (semaine / mois, par tranche) ────────────
+
+  @Get('recap-heures')
+  recapHeures(
+    @Param('siteId') siteId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.effectif.recapHeures(siteId, this.actor(user));
+  }
+
   // ── Récapitulatif d'effectif (productif / non productif) ──────────────
 
   @Get('recap-effectif')

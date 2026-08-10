@@ -253,6 +253,136 @@ export class EffectifService {
     };
   }
 
+  // ── Récapitulatif des heures par semaine et par mois ─────────────────
+
+  async recapHeures(siteId: string, actor: Actor) {
+    await this.sites.assertCanAccess(siteId, actor);
+
+    // 1) Mois disposant d'un pointage journalier : les heures supplémentaires
+    //    sont recalculées par semaine, comme pour le bulletin.
+    const pointages = await this.prisma.pointage.findMany({
+      where: { siteId, present: true },
+      select: { ouvrierId: true, date: true, heures: true, jourFerie: true },
+      orderBy: { date: 'asc' },
+    });
+
+    // Regroupement par ouvrier puis par semaine ISO
+    type Cumul = { norm: number; hs15: number; hs40: number; ferie: number };
+    const vide = (): Cumul => ({ norm: 0, hs15: 0, hs40: 0, ferie: 0 });
+    const ajoute = (a: Cumul, b: Cumul) => {
+      a.norm += b.norm; a.hs15 += b.hs15; a.hs40 += b.hs40; a.ferie += b.ferie;
+    };
+
+    const parSemaineOuvrier = new Map<string, { wd: number; fe: number; debut: Date; fin: Date }>();
+    for (const p of pointages) {
+      const jour = new Date(p.date);
+      const cle = `${p.ouvrierId}|${isoWeekKey(jour)}`;
+      if (!parSemaineOuvrier.has(cle)) {
+        parSemaineOuvrier.set(cle, { wd: 0, fe: 0, debut: jour, fin: jour });
+      }
+      const s = parSemaineOuvrier.get(cle)!;
+      if (jour < s.debut) s.debut = jour;
+      if (jour > s.fin) s.fin = jour;
+      const h = Number(p.heures);
+      if (p.jourFerie) s.fe += h; else s.wd += h;
+    }
+
+    const semaines = new Map<string, { semaine: string; debut: string; fin: string } & Cumul>();
+    const moisDepuisPointage = new Map<string, Cumul>();
+    for (const [cle, s] of parSemaineOuvrier) {
+      const wk = cle.split('|')[1];
+      const c: Cumul = {
+        norm: Math.min(s.wd, 40),
+        hs15: Math.max(0, Math.min(s.wd - 40, 8)),
+        hs40: Math.max(0, s.wd - 48),
+        ferie: s.fe,
+      };
+      if (!semaines.has(wk)) {
+        semaines.set(wk, { semaine: wk, debut: s.debut.toISOString().slice(0, 10), fin: s.fin.toISOString().slice(0, 10), ...vide() });
+      }
+      const w = semaines.get(wk)!;
+      ajoute(w, c);
+      if (s.debut < new Date(w.debut)) w.debut = s.debut.toISOString().slice(0, 10);
+      if (s.fin > new Date(w.fin)) w.fin = s.fin.toISOString().slice(0, 10);
+
+      // Rattachement au mois de paie : période du 21 au 20
+      const ref = s.fin;
+      const moisPaie = ref.getUTCDate() >= 21
+        ? `${ref.getUTCFullYear()}-${String(ref.getUTCMonth() + 2).padStart(2, '0')}`
+        : `${ref.getUTCFullYear()}-${String(ref.getUTCMonth() + 1).padStart(2, '0')}`;
+      const mp = moisPaie.endsWith('-13')
+        ? `${ref.getUTCFullYear() + 1}-01`
+        : moisPaie;
+      if (!moisDepuisPointage.has(mp)) moisDepuisPointage.set(mp, vide());
+      ajoute(moisDepuisPointage.get(mp)!, c);
+    }
+
+    // 2) Mois antérieurs : totaux repris des récapitulatifs de paie
+    const recaps = await this.prisma.recapMensuel.groupBy({
+      by: ['mois'],
+      _sum: { heuresNormales: true, heuresHs15: true, heuresHs40: true, heuresHs60: true, heuresHs100: true },
+    });
+
+    const parMois = new Map<string, Cumul & { hs100: number; source: string }>();
+    for (const r of recaps) {
+      parMois.set(r.mois, {
+        norm: Number(r._sum.heuresNormales ?? 0),
+        hs15: Number(r._sum.heuresHs15 ?? 0),
+        hs40: Number(r._sum.heuresHs40 ?? 0),
+        ferie: Number(r._sum.heuresHs60 ?? 0),
+        hs100: Number(r._sum.heuresHs100 ?? 0),
+        source: 'recap',
+      });
+    }
+    // Le pointage journalier prévaut sur le récapitulatif
+    for (const [m, c] of moisDepuisPointage) {
+      parMois.set(m, { ...c, hs100: 0, source: 'pointage' });
+    }
+
+    const arrondi = (n: number) => Math.round(n * 10) / 10;
+    const mois = [...parMois.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([m, c]) => ({
+        mois: m,
+        heuresNormales: arrondi(c.norm),
+        heuresHs15: arrondi(c.hs15),
+        heuresHs40: arrondi(c.hs40),
+        heuresFerie: arrondi(c.ferie),
+        heuresHs100: arrondi(c.hs100),
+        total: arrondi(c.norm + c.hs15 + c.hs40 + c.ferie + c.hs100),
+        source: c.source,
+      }));
+
+    const listeSemaines = [...semaines.values()]
+      .sort((a, b) => a.debut.localeCompare(b.debut))
+      .map((s) => ({
+        semaine: s.semaine,
+        debut: s.debut,
+        fin: s.fin,
+        heuresNormales: arrondi(s.norm),
+        heuresHs15: arrondi(s.hs15),
+        heuresHs40: arrondi(s.hs40),
+        heuresFerie: arrondi(s.ferie),
+        total: arrondi(s.norm + s.hs15 + s.hs40 + s.ferie),
+      }));
+
+    const somme = (k: keyof (typeof mois)[0]) =>
+      arrondi(mois.reduce((a, m) => a + (m[k] as number), 0));
+
+    return {
+      semaines: listeSemaines,
+      mois,
+      totaux: {
+        heuresNormales: somme('heuresNormales'),
+        heuresHs15: somme('heuresHs15'),
+        heuresHs40: somme('heuresHs40'),
+        heuresFerie: somme('heuresFerie'),
+        heuresHs100: somme('heuresHs100'),
+        total: somme('total'),
+      },
+    };
+  }
+
   // ── Résumé mensuel avec calcul HS droit sénégalais ───────────────────
 
   async resumeMensuel(siteId: string, actor: Actor, mois: string) {

@@ -878,9 +878,139 @@ function RecapEffectifView({ siteId, mois }: { siteId: string; mois: string }) {
   );
 }
 
+// ── Récapitulatif des heures : semaine / mois, par tranche ────────────
+
+function RecapHeuresView({ siteId }: { siteId: string }) {
+  const [vue, setVue] = useState<'mois' | 'semaine'>('mois');
+  const { data, isLoading } = useQuery({
+    queryKey: ['effectif-recap-heures', siteId],
+    queryFn: () => effectifApi.recapHeures(siteId),
+  });
+
+  if (isLoading) return <p className="text-sm text-slate-400 py-4">Chargement…</p>;
+  if (!data || data.mois.length === 0) {
+    return <p className="text-sm text-slate-400 text-center py-8">Aucune heure enregistrée.</p>;
+  }
+
+  const h = (n: number) => (n > 0 ? `${new Intl.NumberFormat('fr-FR').format(n)} h` : '—');
+  const t = data.totaux;
+  const lignes = vue === 'mois' ? data.mois : data.semaines;
+
+  const Kpi = ({ label, val, cls, pct }: { label: string; val: number; cls: string; pct?: boolean }) => (
+    <div className="kpi-card">
+      <span className="text-xs uppercase tracking-wide text-slate-500">{label}</span>
+      <span className={`text-xl font-bold ${cls}`}>{new Intl.NumberFormat('fr-FR').format(val)} h</span>
+      {pct && t.total > 0 && (
+        <span className="text-xs text-slate-400">{((val / t.total) * 100).toFixed(1)} % du total</span>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <Kpi label="Total heures" val={t.total} cls="text-navy" />
+        <Kpi label="Normales" val={t.heuresNormales} cls="text-slate-700" pct />
+        <Kpi label="HS +15 %" val={t.heuresHs15} cls="text-blue-600" pct />
+        <Kpi label="HS +40 %" val={t.heuresHs40} cls="text-orange-500" pct />
+        <Kpi label="Férié / dim." val={t.heuresFerie} cls="text-amber-600" pct />
+      </div>
+
+      <div className="card">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-navy text-sm">
+            {vue === 'mois' ? `Par mois de paie (${data.mois.length})` : `Par semaine (${data.semaines.length})`}
+          </h3>
+          <div className="flex gap-1">
+            {(['mois', 'semaine'] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => setVue(v)}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                  vue === v ? 'bg-navy text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {v === 'mois' ? 'Par mois' : 'Par semaine'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {vue === 'semaine' && data.semaines.length === 0 ? (
+          <p className="text-sm text-slate-400 py-6 text-center">
+            Le détail hebdomadaire n'existe que pour les mois saisis au jour le jour.
+          </p>
+        ) : (
+          <div className="overflow-x-auto max-h-[26rem] overflow-y-auto">
+            <table className="min-w-full text-xs">
+              <thead className="sticky top-0 bg-white">
+                <tr className="border-b border-slate-200 text-slate-500">
+                  <th className="text-left px-3 py-2 font-semibold text-navy">
+                    {vue === 'mois' ? 'Mois' : 'Semaine'}
+                  </th>
+                  <th className="text-right px-2 py-2">Normales</th>
+                  <th className="text-right px-2 py-2 text-blue-600">HS +15 %</th>
+                  <th className="text-right px-2 py-2 text-orange-500">HS +40 %</th>
+                  <th className="text-right px-2 py-2 text-amber-600">Férié/dim.</th>
+                  <th className="text-right px-3 py-2 font-semibold text-navy">Total</th>
+                  {vue === 'mois' && <th className="text-center px-2 py-2">Origine</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {lignes.map((l) => {
+                  const estMois = 'mois' in l;
+                  return (
+                    <tr key={estMois ? l.mois : `${l.debut}`} className="border-b border-slate-100 hover:bg-surface-0">
+                      <td className="px-3 py-1.5 font-medium text-navy whitespace-nowrap">
+                        {estMois ? l.mois : `${formatJourMois(l.debut)} – ${formatJourMois(l.fin)}`}
+                      </td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{h(l.heuresNormales)}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums text-blue-600">{h(l.heuresHs15)}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums text-orange-500">{h(l.heuresHs40)}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums text-amber-600">{h(l.heuresFerie)}</td>
+                      <td className="px-3 py-1.5 text-right font-semibold text-navy tabular-nums">{h(l.total)}</td>
+                      {estMois && (
+                        <td className="px-2 py-1.5 text-center">
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${
+                            l.source === 'pointage' ? 'bg-green-light text-green' : 'bg-slate-100 text-slate-500'
+                          }`}>
+                            {l.source === 'pointage' ? 'pointage' : 'récap'}
+                          </span>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-slate-300 bg-surface-0 font-bold text-navy">
+                  <td className="px-3 py-2">Total</td>
+                  <td className="px-2 py-2 text-right tabular-nums">{h(t.heuresNormales)}</td>
+                  <td className="px-2 py-2 text-right tabular-nums text-blue-600">{h(t.heuresHs15)}</td>
+                  <td className="px-2 py-2 text-right tabular-nums text-orange-500">{h(t.heuresHs40)}</td>
+                  <td className="px-2 py-2 text-right tabular-nums text-amber-600">{h(t.heuresFerie)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{h(t.total)}</td>
+                  {vue === 'mois' && <td />}
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <p className="text-xs text-slate-400">
+        « Récap » = totaux repris des états de paie (pas de détail par jour).
+        « Pointage » = recalculé à partir de la saisie journalière, les heures
+        supplémentaires étant décomptées par semaine. Le mois de paie court du
+        21 au 20.
+      </p>
+    </div>
+  );
+}
+
 // ── Tab principal ─────────────────────────────────────────────────────
 
-type SubTab = 'equipe' | 'pointage' | 'salaires' | 'recap';
+type SubTab = 'equipe' | 'pointage' | 'salaires' | 'recap' | 'heures';
 
 interface EffectifTabProps {
   siteId: string;
@@ -920,6 +1050,7 @@ export function EffectifTab({ siteId }: EffectifTabProps) {
     { key: 'pointage', label: 'Pointage' },
     { key: 'salaires', label: 'Bulletin de paie' },
     { key: 'recap', label: 'Récap effectif' },
+    { key: 'heures', label: 'Récap heures' },
   ];
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -1093,6 +1224,9 @@ export function EffectifTab({ siteId }: EffectifTabProps) {
 
       {/* Récapitulatif d'effectif */}
       {subTab === 'recap' && <RecapEffectifView siteId={siteId} mois={mois} />}
+
+      {/* Récapitulatif des heures */}
+      {subTab === 'heures' && <RecapHeuresView siteId={siteId} />}
 
       {showForm && (
         <OuvrierForm
