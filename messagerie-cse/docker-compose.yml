@@ -1,0 +1,17 @@
+# Connecteur Messagerie CSE Immobilier — branché sur le Caddy de CNN-BTPManager-Pro.
+# RESEAU_CADDY (dans .env) = réseau Docker du conteneur Caddy existant.
+services:
+  messagerie:
+    build: .
+    container_name: messagerie-cse
+    env_file: .env
+    restart: unless-stopped
+    networks: [caddy]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+
+networks:
+  caddy:
+    external: true
+    name: ${RESEAU_CADDY}

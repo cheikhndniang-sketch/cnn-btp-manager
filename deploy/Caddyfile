@@ -42,3 +42,10 @@ www.{$DOMAIN} {
 		}
 	}
 }
+
+# Connecteur Messagerie CSE Immobilier pour Claude (conteneur messagerie-cse,
+# projet compose séparé attaché au réseau « internal » de cette stack).
+mail.{$DOMAIN} {
+	encode gzip
+	reverse_proxy messagerie-cse:8000
+}
