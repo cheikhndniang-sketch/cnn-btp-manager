@@ -31,16 +31,18 @@ fi
 
 etape "3/6 Copie des fichiers dans $CIBLE"
 mkdir -p "$CIBLE"
-cp "$SOURCE"/{serveur.py,Dockerfile,requirements.txt,docker-compose.yml} "$CIBLE"/
+cp "$SOURCE"/{serveur.py,oauth.py,Dockerfile,requirements.txt,docker-compose.yml} "$CIBLE"/
 
 etape "4/6 Configuration (.env)"
 if [ -f "$CIBLE/.env" ]; then
   echo ".env déjà présent : conservé."
   JETON=$(grep '^JETON_ACCES=' "$CIBLE/.env" | cut -d= -f2-)
+  PHRASE=$(grep '^PHRASE_DE_PASSE=' "$CIBLE/.env" | cut -d= -f2-)
 else
   read -rsp "Mot de passe de la boîte cheikh.niang@cseimmobilier.sn : " MDP; echo
   [ -n "$MDP" ] || { echo "Mot de passe vide."; exit 1; }
   JETON=$(openssl rand -hex 32)
+  PHRASE=$(openssl rand -hex 10)
   umask 077
   cat > "$CIBLE/.env" <<CONF
 DOMAINE=$SOUS_DOMAINE
@@ -54,6 +56,11 @@ SMTP_HOTE=us3.smtp.mailhostbox.com
 SMTP_PORT=587
 NOM_EXPEDITEUR=Cheikh Ndiobo NIANG
 JETON_ACCES=$JETON
+# Connexion OAuth : claude.ai ne propose pas toujours le champ « En-têtes de
+# requête ». La phrase de passe ci-dessous est demandée une seule fois, sur la
+# page de connexion servie par ce serveur, quand on relie le connecteur.
+PHRASE_DE_PASSE=$PHRASE
+DOSSIER_DONNEES=/donnees
 CONF
   chmod 600 "$CIBLE/.env"
 fi
@@ -98,7 +105,10 @@ if [ "${OK:-0}" = 1 ]; then echo " Connecteur en ligne : https://$SOUS_DOMAINE/s
 else echo " Connecteur démarré ; HTTPS pas encore prêt (DNS ?). Revérifier : https://$SOUS_DOMAINE/sante"; fi
 echo
 echo " À saisir dans Claude (Personnaliser > Connecteurs > Ajouter un connecteur personnalisé) :"
-echo "   URL    : https://$SOUS_DOMAINE/mcp"
-echo "   En-tête: Authorization"
-echo "   Valeur : Bearer $JETON"
+echo "   URL            : https://$SOUS_DOMAINE/mcp"
+echo "   Authentification : « Se connecter » (OAuth) — pas d'en-tête à remplir."
+echo "   Phrase de passe demandée une fois sur la page de connexion : $PHRASE"
+echo
+echo " Si le compte propose le champ « En-têtes de requête », le jeton fixe marche aussi :"
+echo "   En-tête: Authorization   Valeur : Bearer $JETON"
 echo "================================================================"

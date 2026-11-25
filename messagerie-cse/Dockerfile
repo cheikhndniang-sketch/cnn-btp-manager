@@ -6,10 +6,13 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY serveur.py .
+COPY serveur.py oauth.py ./
 
-# Utilisateur sans privilèges
-RUN useradd --create-home --uid 10001 messagerie
+# Utilisateur sans privilèges. /donnees accueille les jetons OAuth : le dossier est
+# créé ici avec ses droits pour que le volume Docker en hérite au premier montage.
+RUN useradd --create-home --uid 10001 messagerie \
+ && mkdir -p /donnees \
+ && chown messagerie:messagerie /donnees
 USER messagerie
 
 EXPOSE 8000

@@ -34,6 +34,8 @@ import uvicorn
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
+from oauth import FournisseurOAuth
+
 # ---------------------------------------------------------------------------
 # Configuration (variables d'environnement, voir .env.exemple)
 # ---------------------------------------------------------------------------
@@ -60,6 +62,10 @@ NOM_EXPEDITEUR = _env("NOM_EXPEDITEUR", "Cheikh Ndiobo NIANG")
 JETON = _env("JETON_ACCES", obligatoire=True)
 DOMAINE = _env("DOMAINE", "")  # ex. mail.mondomaine.com
 PORT_HTTP = int(_env("PORT", "8000"))
+# Connexion OAuth : seul mécanisme que claude.ai sait piloter lui-même quand le
+# champ « En-têtes de requête » n'est pas disponible sur le compte.
+PHRASE_DE_PASSE = _env("PHRASE_DE_PASSE", "")
+DOSSIER_DONNEES = _env("DOSSIER_DONNEES", "/donnees")
 
 if len(JETON) < 32:
     raise SystemExit("JETON_ACCES doit contenir au moins 32 caractères.")
@@ -577,6 +583,14 @@ async def deplacer_mail(dossier: str, uid: str, destination: str) -> dict:
 # Contrôle d'accès par jeton + point de santé
 # ---------------------------------------------------------------------------
 
+OAUTH = FournisseurOAuth(DOMAINE, PHRASE_DE_PASSE, DOSSIER_DONNEES)
+if OAUTH.actif:
+    log.info("Connexion OAuth active sur %s", OAUTH.base)
+else:
+    log.info("Connexion OAuth inactive (PHRASE_DE_PASSE absente) :"
+             " seul le jeton fixe est accepté")
+
+
 class ControleJeton:
     """Refuse toute requête sans « Authorization: Bearer <JETON_ACCES> »,
     sauf /sante (vérification que le service tourne)."""
@@ -587,19 +601,51 @@ class ControleJeton:
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
-        if scope.get("path") == "/sante":
+        chemin = scope.get("path") or "/"
+        # Parcours OAuth (métadonnées, enregistrement, page de connexion, jetons) :
+        # ces chemins précèdent le contrôle, sinon personne ne pourrait se connecter.
+        if OAUTH.actif and OAUTH.concerne(chemin):
+            return await OAUTH.gerer(scope, receive, send)
+        if chemin == "/sante":
             await send({"type": "http.response.start", "status": 200,
                         "headers": [(b"content-type", b"text/plain; charset=utf-8")]})
             return await send({"type": "http.response.body", "body": "ok".encode()})
         entetes = dict(scope.get("headers") or [])
         auth = entetes.get(b"authorization", b"").decode(errors="ignore")
         fourni = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
-        if not fourni or not hmac.compare_digest(fourni.encode(), JETON.encode()):
+        accepte = bool(fourni) and (
+            hmac.compare_digest(fourni.encode(), JETON.encode())
+            or (OAUTH.actif and OAUTH.verifier(fourni))
+        )
+        if not accepte:
             client = (scope.get("client") or ("?",))[0]
-            log.warning("Accès refusé depuis %s", client)
+            # Motif explicite : permet de diagnostiquer un connecteur mal configuré
+            # sans jamais écrire le jeton dans les journaux (seule sa longueur sort).
+            if not auth:
+                motif = "aucun en-tête Authorization"
+            elif not auth.lower().startswith("bearer "):
+                motif = "en-tête Authorization sans le préfixe « Bearer »"
+            elif len(fourni) == len(JETON):
+                motif = "jeton de bonne longueur mais incorrect"
+            elif OAUTH.actif:
+                motif = (f"jeton de {len(fourni)} caractères inconnu"
+                         " (ni jeton fixe, ni jeton OAuth valide)")
+            else:
+                motif = f"jeton de {len(fourni)} caractères au lieu de {len(JETON)}"
+            # Noms des en-têtes reçus (JAMAIS leurs valeurs) : permet de repérer
+            # un en-tête d'authentification mal orthographié côté client.
+            noms = sorted({c.decode(errors="ignore").lower() for c in entetes})
+            log.warning("Accès refusé depuis %s sur %s — %s | en-têtes reçus : %s",
+                        client, scope.get("path"), motif, ", ".join(noms) or "aucun")
+            # RFC 9728 : le client suit « resource_metadata » pour découvrir où
+            # se connecter. C'est ce qui déclenche le parcours OAuth de Claude.
+            defi = b'Bearer realm="messagerie"'
+            if OAUTH.actif:
+                defi += (b', resource_metadata="' + OAUTH.base.encode()
+                         + b'/.well-known/oauth-protected-resource"')
             await send({"type": "http.response.start", "status": 401,
                         "headers": [(b"content-type", b"application/json"),
-                                    (b"www-authenticate", b'Bearer realm="messagerie"')]})
+                                    (b"www-authenticate", defi)]})
             return await send({"type": "http.response.body", "body": b'{"erreur":"non autorise"}'})
         return await self.app(scope, receive, send)
 

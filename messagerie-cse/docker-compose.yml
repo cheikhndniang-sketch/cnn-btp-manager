@@ -9,7 +9,14 @@ services:
     networks: [caddy]
     read_only: true
     tmpfs: [/tmp]
+    # Jetons OAuth : seule partie du système de fichiers qui doit survivre aux
+    # redémarrages, sinon il faudrait se reconnecter à chaque mise à jour.
+    volumes:
+      - donnees:/donnees
     security_opt: ["no-new-privileges:true"]
+
+volumes:
+  donnees:
 
 networks:
   caddy:
