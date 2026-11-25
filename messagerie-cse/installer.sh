@@ -51,7 +51,9 @@ IMAP_HOTE=us3.imap.mailhostbox.com
 IMAP_PORT=993
 IMAP_UTILISATEUR=cheikh.niang@cseimmobilier.sn
 IMAP_MOT_DE_PASSE=$MDP
-ENVOI_ACTIVE=oui
+# Envoi direct volontairement désactivé : Cheikh relit les brouillons et envoie
+# lui-même. creer_brouillon passe par IMAP et reste disponible.
+ENVOI_ACTIVE=non
 SMTP_HOTE=us3.smtp.mailhostbox.com
 SMTP_PORT=587
 NOM_EXPEDITEUR=Cheikh Ndiobo NIANG
